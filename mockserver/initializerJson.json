@@ -1,0 +1,85 @@
+[
+  {
+    "id": "meta-send-message",
+    "httpRequest": {
+      "method": "POST",
+      "path": "/v19.0/123456789/messages",
+      "headers": {
+        "Authorization": ["Bearer .*"],
+        "Content-Type": ["application/json"]
+      },
+      "body": {
+        "type": "JSON",
+        "json": {
+          "messaging_product": "whatsapp",
+          "recipient_type": "individual",
+          "to": "+1234567890",
+          "type": "text",
+          "text": {
+            "body": "Hello from MockServer"
+          }
+        },
+        "matchType": "ONLY_MATCHING_FIELDS"
+      }
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "body": {
+        "messaging_product": "whatsapp",
+        "contacts": [{"input": "+1234567890", "wa_id": "1234567890"}],
+        "messages": [{"id": "mock_msg_12345"}]
+      }
+    }
+  },
+  {
+    "id": "salesforce-get-account",
+    "httpRequest": {
+      "method": "GET",
+      "path": "/services/data/v59.0/sobjects/Account/001xx000003DHPxAAO",
+      "headers": {
+        "Authorization": ["Bearer .*"]
+      }
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "body": {
+        "attributes": {
+          "type": "Account",
+          "url": "/services/data/v59.0/sobjects/Account/001xx000003DHPxAAO"
+        },
+        "Id": "001xx000003DHPxAAO",
+        "Name": "Acme Corporation",
+        "Industry": "Technology",
+        "Phone": "+1-555-123-4567",
+        "Website": "https://acme.example.com",
+        "BillingCity": "San Francisco",
+        "BillingState": "CA"
+      }
+    }
+  },
+  {
+    "id": "hubspot-get-contact",
+    "httpRequest": {
+      "method": "GET",
+      "path": "/crm/v3/objects/contacts/12345",
+      "headers": {
+        "Authorization": ["Bearer .*"]
+      }
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "body": {
+        "id": "12345",
+        "properties": {
+          "firstname": "Jane",
+          "lastname": "Doe",
+          "email": "jane.doe@example.com",
+          "phone": "+1-555-987-6543",
+          "company": "Acme Corp"
+        },
+        "createdAt": "2023-01-15T10:30:00Z",
+        "updatedAt": "2023-06-20T14:45:00Z"
+      }
+    }
+  }
+]

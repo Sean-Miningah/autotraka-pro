@@ -1,0 +1,114 @@
+version: "3.9"
+
+services:
+  # --- Infrastructure ---
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: wa-crm-postgres
+    environment:
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: wacrm
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d wacrm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: wa-crm-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:2-alpine
+    container_name: wa-crm-nats
+    ports:
+      - "4222:4222"
+      - "8222:8222" # monitoring
+    command: "-js -m 8222"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mockserver:
+    image: mockserver/mockserver:5.15.0
+    container_name: wa-crm-mockserver
+    ports:
+      - "1080:1080"
+    environment:
+      MOCKSERVER_PROPERTY_FILE: /config/mockserver.properties
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/initializerJson.json
+    volumes:
+      - ./mockserver:/config:ro
+      - ./mockserver/expectations:/expectations:ro
+
+
+  # --- Application Services ---
+  go-gateway:
+    build:
+      context: ./go-gateway
+      dockerfile: Dockerfile
+    container_name: wa-crm-go-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      ENV: "development"
+      DATABASE_URL: "postgres://devuser:devpass@postgres:5432/wacrm?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      NATS_URL: "nats://nats:4222"
+      META_BASE_URL: "http://mockserver:1080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      - mockserver
+    volumes:
+      - ./go-gateway:/app:ro
+
+  python-ai:
+    build:
+      context: ./python-ai
+      dockerfile: Dockerfile
+    container_name: wa-crm-python-ai
+    ports:
+      - "8081:8081"
+    environment:
+      PORT: "8081"
+      ENV: "development"
+      DATABASE_URL: "postgresql://devuser:devpass@postgres:5432/wacrm"
+      REDIS_URL: "redis://redis:6379/0"
+      NATS_URL: "nats://nats:4222"
+      CRM_BASE_URL: "http://mockserver:1080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      - mockserver
+    volumes:
+      - ./python-ai:/app:ro
+
+volumes:
+  postgres_data:
+  redis_data:

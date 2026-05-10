@@ -61,7 +61,7 @@ services:
   # --- Application Services ---
   go-gateway:
     build:
-      context: ./go-gateway
+      context: ./services/go-gateway
       dockerfile: Dockerfile
     container_name: wa-crm-go-gateway
     ports:
@@ -82,11 +82,11 @@ services:
         condition: service_healthy
       - mockserver
     volumes:
-      - ./go-gateway:/app:ro
+      - ./services/go-gateway:/app:ro
 
   python-ai:
     build:
-      context: ./python-ai
+      context: ./services/python-ai
       dockerfile: Dockerfile
     container_name: wa-crm-python-ai
     ports:
@@ -107,7 +107,7 @@ services:
         condition: service_healthy
       - mockserver
     volumes:
-      - ./python-ai:/app:ro
+      - ./services/python-ai:/app:ro
 
 volumes:
   postgres_data:

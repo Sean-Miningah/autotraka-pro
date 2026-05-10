@@ -1,34 +1,44 @@
 package config
 
 import (
-	"os"
+	"fmt"
+
+	"github.com/spf13/viper"
 )
 
 // Config holds application configuration.
 type Config struct {
-	Port        string
-	Env         string
-	DatabaseURL string
-	RedisURL    string
-	NATSURL     string
-	MetaBaseURL string
+	Port        string `mapstructure:"PORT"`
+	Env         string `mapstructure:"ENV"`
+	DatabaseURL string `mapstructure:"DATABASE_URL"`
+	RedisURL    string `mapstructure:"REDIS_URL"`
+	NATSURL     string `mapstructure:"NATS_URL"`
+	MetaBaseURL string `mapstructure:"META_BASE_URL"`
 }
 
-// Load reads configuration from environment variables.
-func Load() Config {
-	return Config{
-		Port:        getEnv("PORT", "8080"),
-		Env:         getEnv("ENV", "development"),
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://devuser:devpass@localhost:5432/wacrm?sslmode=disable"),
-		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379/0"),
-		NATSURL:     getEnv("NATS_URL", "nats://localhost:4222"),
-		MetaBaseURL: getEnv("META_BASE_URL", "http://localhost:1080"),
-	}
-}
+// Load reads configuration from environment variables and, in development, a .env file.
+func Load() (*Config, error) {
+	v := viper.New()
 
-func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+	v.SetDefault("PORT", "8080")
+	v.SetDefault("ENV", "development")
+	v.SetDefault("DATABASE_URL", "postgres://devuser:devpass@localhost:5432/wacrm?sslmode=disable")
+	v.SetDefault("REDIS_URL", "redis://localhost:6379/0")
+	v.SetDefault("NATS_URL", "nats://localhost:4222")
+	v.SetDefault("META_BASE_URL", "http://localhost:1080")
+
+	v.AutomaticEnv()
+
+	// Load .env file only in development for local convenience.
+	if v.GetString("ENV") == "development" {
+		v.SetConfigFile(".env")
+		// Intentionally ignore error; .env is optional.
+		_ = v.ReadInConfig()
 	}
-	return fallback
+
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	return &cfg, nil
 }

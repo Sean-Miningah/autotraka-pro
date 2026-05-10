@@ -1,13 +1,13 @@
 package messaging
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
 func TestMetaClient_SendTextMessage(t *testing.T) {
-	// Create a mock server to simulate Meta API
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
@@ -26,7 +26,7 @@ func TestMetaClient_SendTextMessage(t *testing.T) {
 	defer mockServer.Close()
 
 	client := NewMetaClient(mockServer.URL, "test-token")
-	err := client.SendTextMessage("123456789", "+1234567890", "Hello from unit test")
+	err := client.SendTextMessage(context.Background(), "123456789", "+1234567890", "Hello from unit test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestMetaClient_SendTextMessage_Failure(t *testing.T) {
 	defer mockServer.Close()
 
 	client := NewMetaClient(mockServer.URL, "bad-token")
-	err := client.SendTextMessage("123456789", "+1234567890", "Hello")
+	err := client.SendTextMessage(context.Background(), "123456789", "+1234567890", "Hello")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

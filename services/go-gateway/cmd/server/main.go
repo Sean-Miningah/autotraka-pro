@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/autotraka/go-gateway/internal/auth"
+	"github.com/autotraka/go-gateway/internal/automation"
 	"github.com/autotraka/go-gateway/internal/channel"
 	"github.com/autotraka/go-gateway/internal/config"
 	"github.com/autotraka/go-gateway/internal/contact"
@@ -96,6 +97,9 @@ func main() {
 	templateSvc := template.NewService(queries, metaTemplateClient)
 	templateHandler := template.NewHandler(templateSvc)
 
+	autoSvc := automation.NewService(queries)
+	autoHandler := automation.NewHandler(autoSvc)
+
 	convSvc := conversation.NewService(queries, contactSvc, templateSvc, wa, eb)
 	convHandler := conversation.NewHandler(convSvc)
 
@@ -145,6 +149,7 @@ func main() {
 		contactHandler.RegisterRoutes(r)
 		convHandler.RegisterRoutes(r)
 		templateHandler.RegisterRoutes(r)
+		autoHandler.RegisterRoutes(r)
 		channelHealthHandler.RegisterRoutes(r)
 		r.Get("/api/v1/me", func(w http.ResponseWriter, r *http.Request) {
 			auth.WriteJSON(w, http.StatusOK, auth.Envelope{

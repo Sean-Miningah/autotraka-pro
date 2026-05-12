@@ -1,0 +1,10 @@
+DROP INDEX idx_automation_runs_conversation_id;
+DROP INDEX idx_automation_runs_tenant_id;
+DROP INDEX idx_automation_runs_automation_id;
+DROP TABLE automation_runs;
+DROP INDEX idx_automations_tenant_status;
+DROP INDEX idx_automations_status;
+DROP INDEX idx_automations_tenant_id;
+DROP TABLE automations;
+DROP TYPE automation_run_status;
+DROP TYPE automation_status;

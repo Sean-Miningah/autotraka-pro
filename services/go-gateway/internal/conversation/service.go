@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/autotraka/go-gateway/internal/automation"
 	"github.com/autotraka/go-gateway/internal/channel"
 	"github.com/autotraka/go-gateway/internal/contact"
 	"github.com/autotraka/go-gateway/internal/eventbus"
@@ -29,19 +30,23 @@ type Service struct {
 	queries     *sqlcgen.Queries
 	contactSvc  *contact.Service
 	templateSvc *template.Service
+	autoEngine  *automation.Engine
 	ch          channel.Channel
 	eventbus    *eventbus.Client
 }
 
 // NewService creates a conversation service.
 func NewService(queries *sqlcgen.Queries, contactSvc *contact.Service, templateSvc *template.Service, ch channel.Channel, eventbus *eventbus.Client) *Service {
-	return &Service{
+	svc := &Service{
 		queries:     queries,
 		contactSvc:  contactSvc,
 		templateSvc: templateSvc,
 		ch:          ch,
 		eventbus:    eventbus,
 	}
+	// Engine is created after service to avoid circular dependency in constructor
+	svc.autoEngine = automation.NewEngine(queries, ch)
+	return svc
 }
 
 // Conversation is the enriched conversation model with messages.
@@ -137,6 +142,21 @@ func (s *Service) ProcessInboundMessage(ctx context.Context, tenantID, channelID
 
 	conversation := s.toConversation(conv)
 	message := s.toMessage(msg)
+
+	// Check automation triggers
+	var textContent string
+	if s.autoEngine != nil {
+		var parsed struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(msg.Content, &parsed); err == nil {
+			textContent = parsed.Text
+		} else {
+			// Fallback: try direct string content
+			textContent = string(msg.Content)
+		}
+		_ = s.autoEngine.ProcessInboundMessage(ctx, tenantID, conv.ID, textContent)
+	}
 
 	// Publish events
 	if s.eventbus != nil {

@@ -13,6 +13,91 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AutomationRunStatus string
+
+const (
+	AutomationRunStatusRunning   AutomationRunStatus = "running"
+	AutomationRunStatusCompleted AutomationRunStatus = "completed"
+	AutomationRunStatusFailed    AutomationRunStatus = "failed"
+)
+
+func (e *AutomationRunStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AutomationRunStatus(s)
+	case string:
+		*e = AutomationRunStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AutomationRunStatus: %T", src)
+	}
+	return nil
+}
+
+type NullAutomationRunStatus struct {
+	AutomationRunStatus AutomationRunStatus `json:"automation_run_status"`
+	Valid               bool                `json:"valid"` // Valid is true if AutomationRunStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAutomationRunStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.AutomationRunStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AutomationRunStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAutomationRunStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AutomationRunStatus), nil
+}
+
+type AutomationStatus string
+
+const (
+	AutomationStatusDraft  AutomationStatus = "draft"
+	AutomationStatusActive AutomationStatus = "active"
+)
+
+func (e *AutomationStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AutomationStatus(s)
+	case string:
+		*e = AutomationStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AutomationStatus: %T", src)
+	}
+	return nil
+}
+
+type NullAutomationStatus struct {
+	AutomationStatus AutomationStatus `json:"automation_status"`
+	Valid            bool             `json:"valid"` // Valid is true if AutomationStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAutomationStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.AutomationStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AutomationStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAutomationStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AutomationStatus), nil
+}
+
 type ConversationStatus string
 
 const (
@@ -230,6 +315,27 @@ func (ns NullTemplateStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.TemplateStatus), nil
+}
+
+type Automation struct {
+	ID         uuid.UUID        `json:"id"`
+	TenantID   uuid.UUID        `json:"tenant_id"`
+	Name       string           `json:"name"`
+	Status     AutomationStatus `json:"status"`
+	Definition []byte           `json:"definition"`
+	CreatedAt  time.Time        `json:"created_at"`
+	UpdatedAt  time.Time        `json:"updated_at"`
+}
+
+type AutomationRun struct {
+	ID               uuid.UUID           `json:"id"`
+	AutomationID     uuid.UUID           `json:"automation_id"`
+	TenantID         uuid.UUID           `json:"tenant_id"`
+	ConversationID   pgtype.UUID         `json:"conversation_id"`
+	TriggerMessageID pgtype.UUID         `json:"trigger_message_id"`
+	Status           AutomationRunStatus `json:"status"`
+	StartedAt        time.Time           `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz  `json:"completed_at"`
 }
 
 type Channel struct {

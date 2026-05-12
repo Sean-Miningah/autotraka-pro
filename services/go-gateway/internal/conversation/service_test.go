@@ -50,7 +50,7 @@ func setupService(tb testing.TB) (*Service, *eventbus.Client, func()) {
 	natsURL, _ := natsC.ConnectionString(ctx)
 	eb, _ := eventbus.New(natsURL, nil)
 
-	svc := NewService(queries, contactSvc, eb)
+	svc := NewService(queries, contactSvc, nil, nil, eb)
 
 	cleanup := func() {
 		eb.Close()

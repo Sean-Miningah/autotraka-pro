@@ -38,7 +38,7 @@ func TestIntegrationAPIToWebSocket(t *testing.T) {
 
 	// Setup services
 	contactSvc := contact.NewService(queries)
-	convSvc := conversation.NewService(queries, contactSvc, eb)
+	convSvc := conversation.NewService(queries, contactSvc, nil, nil, eb)
 
 	// Create tenant, channel
 	tenant, _ := queries.CreateTenant(ctx, sqlcgen.CreateTenantParams{Name: "Test", Mode: "human_first"})

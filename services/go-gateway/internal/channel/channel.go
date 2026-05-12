@@ -13,8 +13,8 @@ type Channel interface {
 	// SendTextMessage sends a plain text message to the recipient.
 	SendTextMessage(ctx context.Context, to, body string) error
 
-	// SendTemplateMessage sends a template message with parameter mapping.
-	SendTemplateMessage(ctx context.Context, to, templateID string, params map[string]string) error
+	// SendTemplateMessage sends a template message with positional parameters.
+	SendTemplateMessage(ctx context.Context, to, templateName, language string, params []string) error
 
 	// SendMediaMessage sends a media message (image, audio, document, video).
 	SendMediaMessage(ctx context.Context, to, mediaType, mediaURL, caption string) error

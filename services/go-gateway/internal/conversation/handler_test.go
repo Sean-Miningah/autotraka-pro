@@ -30,7 +30,7 @@ func setupHandler(tb testing.TB) (*Handler, *sqlcgen.Queries, func()) {
 	eb, _ := eventbus.New(natsURL, nil)
 
 	contactSvc := contact.NewService(queries)
-	svc := NewService(queries, contactSvc, eb)
+	svc := NewService(queries, contactSvc, nil, nil, eb)
 	handler := NewHandler(svc)
 
 	cleanup := func() {

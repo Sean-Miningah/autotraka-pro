@@ -11,26 +11,36 @@ import (
 	"github.com/autotraka/go-gateway/internal/contact"
 	"github.com/autotraka/go-gateway/internal/eventbus"
 	"github.com/autotraka/go-gateway/internal/sqlcgen"
+	"github.com/autotraka/go-gateway/internal/template"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-var ErrNotFound = errors.New("conversation not found")
+var (
+	ErrNotFound            = errors.New("conversation not found")
+	ErrTemplateNotFound    = errors.New("template not found")
+	ErrInvalidTemplate     = errors.New("invalid template")
+	ErrMissingParameters   = errors.New("missing required template parameters")
+)
 
 // Service provides conversation and messaging business logic.
 type Service struct {
-	queries    *sqlcgen.Queries
-	contactSvc *contact.Service
-	eventbus   *eventbus.Client
+	queries     *sqlcgen.Queries
+	contactSvc  *contact.Service
+	templateSvc *template.Service
+	ch          channel.Channel
+	eventbus    *eventbus.Client
 }
 
 // NewService creates a conversation service.
-func NewService(queries *sqlcgen.Queries, contactSvc *contact.Service, eventbus *eventbus.Client) *Service {
+func NewService(queries *sqlcgen.Queries, contactSvc *contact.Service, templateSvc *template.Service, ch channel.Channel, eventbus *eventbus.Client) *Service {
 	return &Service{
-		queries:    queries,
-		contactSvc: contactSvc,
-		eventbus:   eventbus,
+		queries:     queries,
+		contactSvc:  contactSvc,
+		templateSvc: templateSvc,
+		ch:          ch,
+		eventbus:    eventbus,
 	}
 }
 
@@ -151,11 +161,15 @@ func (s *Service) ProcessInboundMessage(ctx context.Context, tenantID, channelID
 
 // SendMessageRequest holds data for sending an outbound message.
 type SendMessageRequest struct {
-	Content   json.RawMessage `json:"content"`
-	ChannelID *uuid.UUID      `json:"channel_id,omitempty"`
+	Content    json.RawMessage   `json:"content"`
+	ChannelID  *uuid.UUID        `json:"channel_id,omitempty"`
+	TemplateID *uuid.UUID        `json:"template_id,omitempty"`
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // SendMessage stores an outbound message optimistically and publishes to NATS.
+// When TemplateID is provided, resolves the template, maps named parameters to
+// positional values, and sends directly via the WhatsApp channel.
 func (s *Service) SendMessage(ctx context.Context, tenantID, conversationID uuid.UUID, req SendMessageRequest) (*Message, error) {
 	// Verify conversation exists and belongs to tenant
 	conv, err := s.queries.GetConversationByID(ctx, sqlcgen.GetConversationByIDParams{
@@ -180,6 +194,57 @@ func (s *Service) SendMessage(ctx context.Context, tenantID, conversationID uuid
 		}
 	}
 
+	var content json.RawMessage
+	var contentType string
+
+	// Template message flow
+	if req.TemplateID != nil {
+		if s.templateSvc == nil || s.ch == nil {
+			return nil, fmt.Errorf("template messaging not configured")
+		}
+
+		tmpl, err := s.templateSvc.Get(ctx, tenantID, *req.TemplateID)
+		if err != nil {
+			if errors.Is(err, template.ErrNotFound) {
+				return nil, ErrTemplateNotFound
+			}
+			return nil, err
+		}
+		if tmpl.Status != "approved" {
+			return nil, fmt.Errorf("%w: template status is %s", ErrInvalidTemplate, tmpl.Status)
+		}
+
+		// Validate all required parameters are present
+		positional := make([]string, 0, len(tmpl.Parameters))
+		for _, p := range tmpl.Parameters {
+			val, ok := req.Parameters[p.Name]
+			if !ok {
+				return nil, fmt.Errorf("%w: missing parameter %q", ErrMissingParameters, p.Name)
+			}
+			positional = append(positional, val)
+		}
+
+		// Store parameter mapping as content
+		paramBytes, _ := json.Marshal(req.Parameters)
+		content = paramBytes
+		contentType = "template"
+
+		// Get contact phone for the "to" field
+		phones, err := s.queries.ListContactPhones(ctx, conv.ContactID)
+		if err != nil || len(phones) == 0 {
+			return nil, fmt.Errorf("contact has no phone number")
+		}
+		to := phones[0].Phone
+
+		// Send directly via channel
+		if err := s.ch.SendTemplateMessage(ctx, to, tmpl.Name, tmpl.Language, positional); err != nil {
+			return nil, fmt.Errorf("send template: %w", err)
+		}
+	} else {
+		content = req.Content
+		contentType = "text"
+	}
+
 	// Store message as pending
 	msg, err := s.queries.CreateMessage(ctx, sqlcgen.CreateMessageParams{
 		TenantID:       tenantID,
@@ -187,8 +252,8 @@ func (s *Service) SendMessage(ctx context.Context, tenantID, conversationID uuid
 		ChannelID:      channelID,
 		Direction:      sqlcgen.MessageDirectionOutbound,
 		Status:         sqlcgen.MessageStatusPending,
-		ContentType:    "text",
-		Content:        req.Content,
+		ContentType:    contentType,
+		Content:        content,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create message: %w", err)
@@ -196,8 +261,8 @@ func (s *Service) SendMessage(ctx context.Context, tenantID, conversationID uuid
 
 	message := s.toMessage(msg)
 
-	// Publish to NATS for delivery
-	if s.eventbus != nil {
+	// Publish to NATS for delivery (only for text; templates are already sent)
+	if s.eventbus != nil && req.TemplateID == nil {
 		ctx = eventbus.WithTenantID(ctx, tenantID)
 		_ = s.eventbus.Publish(ctx, "message.outbound", map[string]interface{}{
 			"message_id":      msg.ID,

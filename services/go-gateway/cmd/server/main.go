@@ -89,19 +89,20 @@ func main() {
 	contactSvc := contact.NewService(queries)
 	contactHandler := contact.NewHandler(contactSvc)
 
-	convSvc := conversation.NewService(queries, contactSvc, eb)
-	convHandler := conversation.NewHandler(convSvc)
+	// Default WhatsApp channel (temporary — will be replaced by per-tenant DB lookup).
+	wa := channel.NewWhatsApp(cfg.MetaBaseURL, cfg.WhatsAppAccessToken, cfg.WhatsAppPhoneNumberID, cfg.WhatsAppAppSecret, cfg.WhatsAppVerifyToken)
 
 	metaTemplateClient := template.NewMetaTemplateAPI(cfg.MetaBaseURL, cfg.WhatsAppAccessToken)
 	templateSvc := template.NewService(queries, metaTemplateClient)
 	templateHandler := template.NewHandler(templateSvc)
 
+	convSvc := conversation.NewService(queries, contactSvc, templateSvc, wa, eb)
+	convHandler := conversation.NewHandler(convSvc)
+
 	wsHub := websocket.NewHub(eb)
 	wsHub.Run()
 	wsHandler := websocket.NewHandler(wsHub, []byte(cfg.JWTSecret))
 
-	// Default WhatsApp channel (temporary — will be replaced by per-tenant DB lookup).
-	wa := channel.NewWhatsApp(cfg.MetaBaseURL, cfg.WhatsAppAccessToken, cfg.WhatsAppPhoneNumberID, cfg.WhatsAppAppSecret, cfg.WhatsAppVerifyToken)
 	webhookHandler := webhook.NewHandler(queries, eb, wa, uuid.Nil, uuid.Nil)
 
 	// Background worker for unprocessed webhook events.

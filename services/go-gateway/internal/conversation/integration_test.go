@@ -2,6 +2,8 @@ package conversation
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,7 +11,9 @@ import (
 	"github.com/autotraka/go-gateway/internal/contact"
 	"github.com/autotraka/go-gateway/internal/eventbus"
 	"github.com/autotraka/go-gateway/internal/sqlcgen"
+	"github.com/autotraka/go-gateway/internal/template"
 	"github.com/autotraka/go-gateway/internal/testutil"
+	"github.com/google/uuid"
 )
 
 func TestIntegrationWebhookToStatusUpdate(t *testing.T) {
@@ -26,7 +30,7 @@ func TestIntegrationWebhookToStatusUpdate(t *testing.T) {
 	defer eb.Close()
 
 	contactSvc := contact.NewService(queries)
-	convSvc := NewService(queries, contactSvc, eb)
+	convSvc := NewService(queries, contactSvc, nil, nil, eb)
 
 	// Create tenant and channel
 	tenant, _ := queries.CreateTenant(ctx, sqlcgen.CreateTenantParams{Name: "Test Corp", Mode: "human_first"})
@@ -163,5 +167,245 @@ func TestIntegrationWebhookToStatusUpdate(t *testing.T) {
 	}
 	if conv2.PreviousConversationID == nil || *conv2.PreviousConversationID != conv.ID {
 		t.Errorf("expected previous_conversation_id link, got %v", conv2.PreviousConversationID)
+	}
+}
+
+// mockChannel records SendTemplateMessage calls for verification.
+type mockChannel struct {
+	calls []mockChannelCall
+}
+
+type mockChannelCall struct {
+	Method       string
+	To           string
+	TemplateName string
+	Language     string
+	Params       []string
+}
+
+func (m *mockChannel) ChannelType() string { return "whatsapp" }
+func (m *mockChannel) SendTextMessage(ctx context.Context, to, body string) error {
+	m.calls = append(m.calls, mockChannelCall{Method: "SendTextMessage", To: to})
+	return nil
+}
+func (m *mockChannel) SendTemplateMessage(ctx context.Context, to, templateName, language string, params []string) error {
+	m.calls = append(m.calls, mockChannelCall{Method: "SendTemplateMessage", To: to, TemplateName: templateName, Language: language, Params: params})
+	return nil
+}
+func (m *mockChannel) SendMediaMessage(ctx context.Context, to, mediaType, mediaURL, caption string) error {
+	return nil
+}
+func (m *mockChannel) MarkRead(ctx context.Context, messageID string) error {
+	return nil
+}
+func (m *mockChannel) VerifyWebhook(mode, verifyToken, challenge string) (string, error) {
+	return "", nil
+}
+func (m *mockChannel) VerifySignature(payload []byte, signature string) error {
+	return nil
+}
+func (m *mockChannel) ParseWebhookEvent(payload []byte) (channel.WebhookEvent, error) {
+	return channel.WebhookEvent{}, nil
+}
+
+func TestIntegrationSendTemplateMessage(t *testing.T) {
+	ctx := context.Background()
+
+	pool, dbCleanup := testutil.SetupTestDB(t)
+	defer dbCleanup()
+	queries := sqlcgen.New(pool)
+
+	contactSvc := contact.NewService(queries)
+	templateSvc := template.NewService(queries, nil)
+	mockCh := &mockChannel{}
+
+	convSvc := NewService(queries, contactSvc, templateSvc, mockCh, nil)
+
+	// Create tenant, channel, and contact with phone
+	tenant, _ := queries.CreateTenant(ctx, sqlcgen.CreateTenantParams{Name: "Test Corp", Mode: "human_first"})
+	ch, _ := queries.CreateChannel(ctx, sqlcgen.CreateChannelParams{
+		TenantID:    tenant.ID,
+		Name:        "WhatsApp Main",
+		ChannelType: "whatsapp",
+		Config:      []byte(`{"phone_number_id":"123456"}`),
+		Status:      "active",
+	})
+
+	_, _ = contactSvc.Create(ctx, tenant.ID, contact.CreateRequest{
+		Name:   "Alice",
+		Phones: []contact.PhoneInput{{Phone: "+1234567890", Label: "mobile"}},
+	})
+
+	// Create an approved template
+	tmpl, _ := templateSvc.Create(ctx, tenant.ID, template.CreateRequest{
+		ChannelID:  ch.ID,
+		Name:       "welcome_v1",
+		Category:   "MARKETING",
+		Language:   "en",
+		Body:       "Hello {{1}}, welcome to {{2}}!",
+		Parameters: []template.ParameterDef{{Name: "name", DisplayName: "Name"}, {Name: "company", DisplayName: "Company"}},
+	})
+	// Mark as approved for sending
+	approved := "approved"
+	tmpl, _ = templateSvc.Update(ctx, tenant.ID, tmpl.ID, template.UpdateRequest{Status: &approved})
+
+	// Create a conversation
+	conv, _, _ := convSvc.ProcessInboundMessage(ctx, tenant.ID, ch.ID, channel.WebhookEvent{
+		EventID:   "EVT_001",
+		From:      "1234567890",
+		MessageID: "MSG_001",
+		Type:      "text",
+		Content:   []byte(`{"body":"Hello"}`),
+		Timestamp: time.Now().Unix(),
+	})
+
+	// Send template message
+	templateID := tmpl.ID
+	msg, err := convSvc.SendMessage(ctx, tenant.ID, conv.ID, SendMessageRequest{
+		TemplateID: &templateID,
+		Parameters: map[string]string{"name": "Alice", "company": "Acme"},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage with template failed: %v", err)
+	}
+	if msg.ContentType != "template" {
+		t.Errorf("expected content_type template, got %s", msg.ContentType)
+	}
+
+	// Verify content stores parameter mapping
+	var storedParams map[string]string
+	if err := json.Unmarshal(msg.Content, &storedParams); err != nil {
+		t.Fatalf("failed to unmarshal content: %v", err)
+	}
+	if storedParams["name"] != "Alice" || storedParams["company"] != "Acme" {
+		t.Errorf("unexpected stored params: %v", storedParams)
+	}
+
+	// Verify channel received the template send with positional params
+	if len(mockCh.calls) != 1 {
+		t.Fatalf("expected 1 channel call, got %d", len(mockCh.calls))
+	}
+	call := mockCh.calls[0]
+	if call.Method != "SendTemplateMessage" {
+		t.Errorf("expected SendTemplateMessage, got %s", call.Method)
+	}
+	if call.TemplateName != "welcome_v1" {
+		t.Errorf("expected template name welcome_v1, got %s", call.TemplateName)
+	}
+	if call.Language != "en" {
+		t.Errorf("expected language en, got %s", call.Language)
+	}
+	if len(call.Params) != 2 || call.Params[0] != "Alice" || call.Params[1] != "Acme" {
+		t.Errorf("unexpected positional params: %v", call.Params)
+	}
+}
+
+func TestIntegrationSendTemplateMessageMissingParameter(t *testing.T) {
+	ctx := context.Background()
+
+	pool, dbCleanup := testutil.SetupTestDB(t)
+	defer dbCleanup()
+	queries := sqlcgen.New(pool)
+
+	contactSvc := contact.NewService(queries)
+	templateSvc := template.NewService(queries, nil)
+	mockCh := &mockChannel{}
+
+	convSvc := NewService(queries, contactSvc, templateSvc, mockCh, nil)
+
+	tenant, _ := queries.CreateTenant(ctx, sqlcgen.CreateTenantParams{Name: "Test Corp", Mode: "human_first"})
+	ch, _ := queries.CreateChannel(ctx, sqlcgen.CreateChannelParams{
+		TenantID:    tenant.ID,
+		Name:        "WhatsApp Main",
+		ChannelType: "whatsapp",
+		Config:      []byte(`{"phone_number_id":"123456"}`),
+		Status:      "active",
+	})
+
+	contactSvc.Create(ctx, tenant.ID, contact.CreateRequest{
+		Name:   "Alice",
+		Phones: []contact.PhoneInput{{Phone: "+1234567890", Label: "mobile"}},
+	})
+
+	tmpl, _ := templateSvc.Create(ctx, tenant.ID, template.CreateRequest{
+		ChannelID:  ch.ID,
+		Name:       "welcome_v1",
+		Category:   "MARKETING",
+		Language:   "en",
+		Body:       "Hello {{1}}!",
+		Parameters: []template.ParameterDef{{Name: "name", DisplayName: "Name"}},
+	})
+	approved := "approved"
+	tmpl, _ = templateSvc.Update(ctx, tenant.ID, tmpl.ID, template.UpdateRequest{Status: &approved})
+
+	conv, _, _ := convSvc.ProcessInboundMessage(ctx, tenant.ID, ch.ID, channel.WebhookEvent{
+		EventID:   "EVT_001",
+		From:      "1234567890",
+		MessageID: "MSG_001",
+		Type:      "text",
+		Content:   []byte(`{"body":"Hello"}`),
+		Timestamp: time.Now().Unix(),
+	})
+
+	templateID := tmpl.ID
+	_, err := convSvc.SendMessage(ctx, tenant.ID, conv.ID, SendMessageRequest{
+		TemplateID: &templateID,
+		Parameters: map[string]string{}, // missing "name"
+	})
+	if err == nil {
+		t.Fatal("expected error for missing parameter")
+	}
+	if !errors.Is(err, ErrMissingParameters) {
+		t.Errorf("expected ErrMissingParameters, got %v", err)
+	}
+}
+
+func TestIntegrationSendTemplateMessageInvalidTemplate(t *testing.T) {
+	ctx := context.Background()
+
+	pool, dbCleanup := testutil.SetupTestDB(t)
+	defer dbCleanup()
+	queries := sqlcgen.New(pool)
+
+	contactSvc := contact.NewService(queries)
+	templateSvc := template.NewService(queries, nil)
+	mockCh := &mockChannel{}
+
+	convSvc := NewService(queries, contactSvc, templateSvc, mockCh, nil)
+
+	tenant, _ := queries.CreateTenant(ctx, sqlcgen.CreateTenantParams{Name: "Test Corp", Mode: "human_first"})
+	ch, _ := queries.CreateChannel(ctx, sqlcgen.CreateChannelParams{
+		TenantID:    tenant.ID,
+		Name:        "WhatsApp Main",
+		ChannelType: "whatsapp",
+		Config:      []byte(`{"phone_number_id":"123456"}`),
+		Status:      "active",
+	})
+
+	contactSvc.Create(ctx, tenant.ID, contact.CreateRequest{
+		Name:   "Alice",
+		Phones: []contact.PhoneInput{{Phone: "+1234567890", Label: "mobile"}},
+	})
+
+	conv, _, _ := convSvc.ProcessInboundMessage(ctx, tenant.ID, ch.ID, channel.WebhookEvent{
+		EventID:   "EVT_001",
+		From:      "1234567890",
+		MessageID: "MSG_001",
+		Type:      "text",
+		Content:   []byte(`{"body":"Hello"}`),
+		Timestamp: time.Now().Unix(),
+	})
+
+	// Use a random UUID that doesn't exist
+	fakeID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	_, err := convSvc.SendMessage(ctx, tenant.ID, conv.ID, SendMessageRequest{
+		TemplateID: &fakeID,
+		Parameters: map[string]string{"name": "Alice"},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid template")
+	}
+	if err != ErrTemplateNotFound {
+		t.Errorf("expected ErrTemplateNotFound, got %v", err)
 	}
 }

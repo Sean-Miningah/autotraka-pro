@@ -80,9 +80,58 @@ func (w *WhatsApp) SendTextMessage(ctx context.Context, to, body string) error {
 	return nil
 }
 
-// SendTemplateMessage sends a WhatsApp template message.
-func (w *WhatsApp) SendTemplateMessage(ctx context.Context, to, templateID string, params map[string]string) error {
-	return errors.New("not implemented")
+// SendTemplateMessage sends a WhatsApp template message with positional parameters.
+func (w *WhatsApp) SendTemplateMessage(ctx context.Context, to, templateName, language string, params []string) error {
+	templateParams := make([]map[string]string, len(params))
+	for i, p := range params {
+		templateParams[i] = map[string]string{
+			"type": "text",
+			"text": p,
+		}
+	}
+
+	payload := map[string]interface{}{
+		"messaging_product": "whatsapp",
+		"recipient_type":    "individual",
+		"to":                to,
+		"type":              "template",
+		"template": map[string]interface{}{
+			"name":     templateName,
+			"language": map[string]string{"code": language},
+			"components": []map[string]interface{}{
+				{
+					"type":       "body",
+					"parameters": templateParams,
+				},
+			},
+		},
+	}
+
+	url := fmt.Sprintf("%s/v19.0/%s/messages", w.baseURL, w.phoneNumberID)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+w.accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := w.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	return nil
 }
 
 // SendMediaMessage sends a WhatsApp media message.

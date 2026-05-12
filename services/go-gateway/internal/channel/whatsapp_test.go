@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -115,6 +116,39 @@ func TestWhatsAppVerifyWebhook_InvalidMode(t *testing.T) {
 	_, err := wa.VerifyWebhook("unsubscribe", "my-verify-token", "hub-challenge-123")
 	if err == nil {
 		t.Fatal("expected error for invalid mode")
+	}
+}
+
+func TestWhatsAppSendTemplateMessage(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/v19.0/123456789/messages" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+
+		if body["type"] != "template" {
+			t.Errorf("expected type template, got %v", body["type"])
+		}
+		template := body["template"].(map[string]interface{})
+		if template["name"] != "hello_template" {
+			t.Errorf("unexpected template name: %v", template["name"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"messages":[{"id":"mock_msg_id"}]}`))
+	}))
+	defer mockServer.Close()
+
+	wa := NewWhatsApp(mockServer.URL, "test-token", "123456789", "secret", "verify")
+	err := wa.SendTemplateMessage(context.Background(), "+1234567890", "hello_template", "en", []string{"Alice"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 	applog "github.com/autotraka/go-gateway/internal/log"
 	"github.com/autotraka/go-gateway/internal/scheduler"
 	"github.com/autotraka/go-gateway/internal/sqlcgen"
+	"github.com/autotraka/go-gateway/internal/template"
 	"github.com/autotraka/go-gateway/internal/telemetry"
 	"github.com/autotraka/go-gateway/internal/webhook"
 	"github.com/autotraka/go-gateway/internal/websocket"
@@ -91,6 +92,10 @@ func main() {
 	convSvc := conversation.NewService(queries, contactSvc, eb)
 	convHandler := conversation.NewHandler(convSvc)
 
+	metaTemplateClient := template.NewMetaTemplateAPI(cfg.MetaBaseURL, cfg.WhatsAppAccessToken)
+	templateSvc := template.NewService(queries, metaTemplateClient)
+	templateHandler := template.NewHandler(templateSvc)
+
 	wsHub := websocket.NewHub(eb)
 	wsHub.Run()
 	wsHandler := websocket.NewHandler(wsHub, []byte(cfg.JWTSecret))
@@ -107,6 +112,7 @@ func main() {
 	sched := scheduler.New(queries)
 	hc := scheduler.NewHealthChecker(queries)
 	sched.RegisterTask("channel-health", 5*time.Minute, hc.CheckAllChannels)
+	sched.RegisterTask("template-status-sync", 10*time.Minute, templateSvc.SyncPendingStatuses)
 	sched.Start(ctx)
 
 	r := chi.NewRouter()
@@ -137,6 +143,7 @@ func main() {
 		r.Use(auth.JWTMiddleware([]byte(cfg.JWTSecret)))
 		contactHandler.RegisterRoutes(r)
 		convHandler.RegisterRoutes(r)
+		templateHandler.RegisterRoutes(r)
 		channelHealthHandler.RegisterRoutes(r)
 		r.Get("/api/v1/me", func(w http.ResponseWriter, r *http.Request) {
 			auth.WriteJSON(w, http.StatusOK, auth.Envelope{

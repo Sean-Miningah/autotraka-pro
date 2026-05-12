@@ -188,6 +188,50 @@ func (ns NullMessageStatus) Value() (driver.Value, error) {
 	return string(ns.MessageStatus), nil
 }
 
+type TemplateStatus string
+
+const (
+	TemplateStatusDraft    TemplateStatus = "draft"
+	TemplateStatusPending  TemplateStatus = "pending"
+	TemplateStatusApproved TemplateStatus = "approved"
+	TemplateStatusRejected TemplateStatus = "rejected"
+)
+
+func (e *TemplateStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = TemplateStatus(s)
+	case string:
+		*e = TemplateStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for TemplateStatus: %T", src)
+	}
+	return nil
+}
+
+type NullTemplateStatus struct {
+	TemplateStatus TemplateStatus `json:"template_status"`
+	Valid          bool           `json:"valid"` // Valid is true if TemplateStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTemplateStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.TemplateStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.TemplateStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTemplateStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.TemplateStatus), nil
+}
+
 type Channel struct {
 	ID              uuid.UUID          `json:"id"`
 	TenantID        uuid.UUID          `json:"tenant_id"`
@@ -277,6 +321,22 @@ type SchedulerLock struct {
 	LockedAt  time.Time `json:"locked_at"`
 	LockedBy  string    `json:"locked_by"`
 	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type Template struct {
+	ID               uuid.UUID      `json:"id"`
+	TenantID         uuid.UUID      `json:"tenant_id"`
+	ChannelID        pgtype.UUID    `json:"channel_id"`
+	ParentTemplateID pgtype.UUID    `json:"parent_template_id"`
+	Name             string         `json:"name"`
+	Category         string         `json:"category"`
+	Status           TemplateStatus `json:"status"`
+	Language         string         `json:"language"`
+	Body             string         `json:"body"`
+	Parameters       []byte         `json:"parameters"`
+	MetaTemplateID   pgtype.Text    `json:"meta_template_id"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
 type Tenant struct {

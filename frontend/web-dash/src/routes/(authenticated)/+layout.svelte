@@ -1,26 +1,47 @@
 <script lang="ts">
-	let { children } = $props();
-	let currentPath = $state('/inbox');
+	import { page } from '$app/stores';
+	import { ws } from '$lib/stores/websocket';
+	import { auth } from '$lib/stores/auth';
+
+	interface LayoutData {
+		accessToken: string | null;
+	}
+
+	let { children, data }: { children: import('svelte').Snippet; data: LayoutData } = $props();
+
+	let currentPath = $derived($page.url.pathname);
 
 	const mobileTabs = [
-		{ id: 'inbox', label: 'Inbox', href: '/inbox', icon: 'inbox' },
-		{ id: 'contacts', label: 'Contacts', href: '/contacts', icon: 'users' },
-		{ id: 'mystats', label: 'My Stats', href: '/analytics', icon: 'chart' },
-		{ id: 'profile', label: 'Profile', href: '/settings', icon: 'user' }
+		{ id: 'inbox', label: 'Inbox', href: '/inbox' },
+		{ id: 'contacts', label: 'Contacts', href: '/contacts' },
+		{ id: 'mystats', label: 'My Stats', href: '/analytics' },
+		{ id: 'profile', label: 'Profile', href: '/settings' }
 	];
 
 	const desktopNavItems = [
-		{ id: 'inbox', label: 'Inbox', href: '/inbox', icon: 'inbox' },
-		{ id: 'contacts', label: 'Contacts', href: '/contacts', icon: 'users' },
-		{ id: 'analytics', label: 'Analytics', href: '/analytics', icon: 'chart' },
-		{ id: 'templates', label: 'Templates', href: '/templates', icon: 'file' },
-		{ id: 'settings', label: 'Settings', href: '/settings', icon: 'cog' }
+		{ id: 'inbox', label: 'Inbox', href: '/inbox' },
+		{ id: 'contacts', label: 'Contacts', href: '/contacts' },
+		{ id: 'analytics', label: 'Analytics', href: '/analytics' },
+		{ id: 'templates', label: 'Templates', href: '/templates' },
+		{ id: 'settings', label: 'Settings', href: '/settings' }
 	];
 
 	function isActive(href: string): boolean {
 		if (href === '/inbox') return currentPath === '/' || currentPath.startsWith('/inbox');
 		return currentPath.startsWith(href);
 	}
+
+	$effect(() => {
+		const token = data.accessToken;
+		if (token) {
+			auth.setToken(token);
+		}
+		ws.connect();
+
+		return () => {
+			ws.disconnect();
+		};
+	});
 </script>
 
 <div class="min-h-screen bg-base dark:bg-base-dark">

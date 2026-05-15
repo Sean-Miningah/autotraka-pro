@@ -26,16 +26,7 @@ export class AuthError extends Error {
 	}
 }
 
-interface AuthDeps {
-	api: {
-		post: (path: string, body: unknown) => Promise<{ data: unknown }>;
-		get: (path: string) => Promise<{ data: unknown }>;
-		patch: (path: string, body: unknown) => Promise<{ data: unknown }>;
-		delete: (path: string) => Promise<{ data: unknown }>;
-	};
-}
-
-export function createAuthStore(deps: AuthDeps) {
+export function createAuthStore() {
 	const store = writable<AuthState>({
 		isAuthenticated: false,
 		accessToken: null,
@@ -46,24 +37,12 @@ export function createAuthStore(deps: AuthDeps) {
 	return {
 		subscribe: store.subscribe,
 
-		login: async (email: string, password: string, tenantId: string) => {
-			const result = await deps.api.post('/api/v1/auth/login', {
-				email,
-				password,
-				tenant_id: tenantId
-			});
-
-			const data = result.data as {
-				access_token: string;
-				refresh_token: string;
-				expires_in: number;
-			};
-
+		setToken(token: string) {
+			const current = get(store);
 			store.set({
+				...current,
 				isAuthenticated: true,
-				accessToken: data.access_token,
-				user: { email, role: 'member' },
-				tenant: { tenant_id: tenantId, tenant_name: '' }
+				accessToken: token
 			});
 		},
 
@@ -84,3 +63,5 @@ export function createAuthStore(deps: AuthDeps) {
 		getAccessToken: () => get(store).accessToken
 	};
 }
+
+export const auth = createAuthStore();

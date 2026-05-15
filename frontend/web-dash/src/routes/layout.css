@@ -1,2 +1,45 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
+@import '@fontsource/space-grotesk/400.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/600.css';
+@import '@fontsource/space-grotesk/700.css';
+
+@theme {
+	--color-primary: #FFE600;
+	--color-secondary: #FF6B9D;
+	--color-success: #BFFF00;
+	--color-danger: #FF3333;
+	--color-surface: #F5F5F0;
+	--color-surface-dark: #1A1A1A;
+	--color-base: #FFFFFF;
+	--color-base-dark: #0A0A0A;
+	--color-text: #000000;
+	--color-text-dark: #F0F0F0;
+	--color-whatsapp: #25D366;
+	--color-instagram: #E4405F;
+	--color-facebook: #1877F2;
+	--font-heading: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+	--font-body: system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+	:root {
+		--brutal-border: 2px solid #000000;
+		--brutal-shadow: 4px 4px 0px #000000;
+		color-scheme: light dark;
+	}
+
+	.dark {
+		--brutal-border: 2px solid #F0F0F0;
+		--brutal-shadow: 4px 4px 0px #F0F0F0;
+	}
+
+	html {
+		font-family: var(--font-body);
+	}
+
+	h1, h2, h3, h4, h5, h6 {
+		font-family: var(--font-heading);
+	}
+}

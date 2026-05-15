@@ -8,13 +8,13 @@ import (
 
 // Config holds application configuration.
 type Config struct {
-	Port        string `mapstructure:"PORT"`
-	Env         string `mapstructure:"ENV"`
-	DatabaseURL string `mapstructure:"DATABASE_URL"`
-	RedisURL    string `mapstructure:"REDIS_URL"`
-	NATSURL     string `mapstructure:"NATS_URL"`
-	MetaBaseURL string `mapstructure:"META_BASE_URL"`
-	JWTSecret   string `mapstructure:"JWT_SECRET"`
+	Port         string `mapstructure:"PORT"`
+	Env          string `mapstructure:"ENV"`
+	DatabaseURL  string `mapstructure:"DATABASE_URL"`
+	RedisURL     string `mapstructure:"REDIS_URL"`
+	NATSURL      string `mapstructure:"NATS_URL"`
+	MetaBaseURL  string `mapstructure:"META_BASE_URL"`
+	JWTSecret    string `mapstructure:"JWT_SECRET"`
 	ServiceToken string `mapstructure:"SERVICE_TOKEN"`
 
 	// WhatsApp channel credentials (temporary — per-channel config in DB will replace these).
@@ -23,11 +23,17 @@ type Config struct {
 	WhatsAppAccessToken   string `mapstructure:"META_WHATSAPP_ACCESS_TOKEN"`
 	WhatsAppPhoneNumberID string `mapstructure:"META_WHATSAPP_PHONE_NUMBER_ID"`
 
-	// Instagram channel credentials (temporary — per-channel config in DB will replace these).
-	InstagramVerifyToken   string `mapstructure:"META_INSTAGRAM_VERIFY_TOKEN"`
-	InstagramAppSecret     string `mapstructure:"META_INSTAGRAM_APP_SECRET"`
-	InstagramAccessToken   string `mapstructure:"META_INSTAGRAM_ACCESS_TOKEN"`
-	InstagramAccountID    string `mapstructure:"META_INSTAGRAM_ACCOUNT_ID"`
+	// Instagram channel credentials.
+	InstagramVerifyToken string `mapstructure:"META_INSTAGRAM_VERIFY_TOKEN"`
+	InstagramAppSecret   string `mapstructure:"META_INSTAGRAM_APP_SECRET"`
+	InstagramAccessToken string `mapstructure:"META_INSTAGRAM_ACCESS_TOKEN"`
+	InstagramAccountID   string `mapstructure:"META_INSTAGRAM_ACCOUNT_ID"`
+
+	// Facebook Messenger channel credentials.
+	FacebookVerifyToken string `mapstructure:"META_FACEBOOK_VERIFY_TOKEN"`
+	FacebookAppSecret     string `mapstructure:"META_FACEBOOK_APP_SECRET"`
+	FacebookAccessToken   string `mapstructure:"META_FACEBOOK_ACCESS_TOKEN"`
+	FacebookPageID        string `mapstructure:"META_FACEBOOK_PAGE_ID"`
 }
 
 // Load reads configuration from environment variables and, in development, a .env file.

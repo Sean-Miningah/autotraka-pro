@@ -43,6 +43,18 @@ func (h *Handler) WhatsApp(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Facebook handles GET (verification) and POST (ingestion) for Facebook Messenger webhooks.
+func (h *Handler) Facebook(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.handleVerification(w, r)
+	case http.MethodPost:
+		h.handleIngestion(w, r)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 // Instagram handles GET (verification) and POST (ingestion) for Instagram webhooks.
 func (h *Handler) Instagram(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {

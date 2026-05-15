@@ -182,3 +182,34 @@ func (q *Queries) GetTenant(ctx context.Context, id uuid.UUID) (Tenant, error) {
 	)
 	return i, err
 }
+
+const listTenantsByEmail = `-- name: ListTenantsByEmail :many
+SELECT t.id, t.name FROM tenants t
+JOIN members m ON m.tenant_id = t.id
+WHERE m.email = $1
+`
+
+type ListTenantsByEmailRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+func (q *Queries) ListTenantsByEmail(ctx context.Context, email string) ([]ListTenantsByEmailRow, error) {
+	rows, err := q.db.Query(ctx, listTenantsByEmail, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTenantsByEmailRow{}
+	for rows.Next() {
+		var i ListTenantsByEmailRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

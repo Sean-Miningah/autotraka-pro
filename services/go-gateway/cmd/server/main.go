@@ -165,6 +165,7 @@ func main() {
 	r.Post("/api/v1/auth/register", authHandler.Register)
 	r.Post("/api/v1/auth/login", authHandler.Login)
 	r.Post("/api/v1/auth/refresh", authHandler.Refresh)
+	r.Get("/api/v1/auth/tenants", authHandler.ListTenantsByEmail)
 
 	r.Route("/webhook", func(r chi.Router) {
 		r.Get("/whatsapp", webhookHandler.WhatsApp)

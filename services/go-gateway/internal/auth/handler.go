@@ -21,6 +21,26 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
+func (h *Handler) ListTenantsByEmail(w http.ResponseWriter, r *http.Request) {
+	email := r.URL.Query().Get("email")
+	if email == "" {
+		WriteJSON(w, http.StatusBadRequest, Envelope{Error: "email query parameter is required"})
+		return
+	}
+
+	tenants, err := h.service.ListTenantsByEmail(r.Context(), email)
+	if err != nil {
+		if errors.Is(err, ErrNoTenants) {
+			WriteJSON(w, http.StatusNotFound, Envelope{Error: "no tenants found"})
+			return
+		}
+		WriteJSON(w, http.StatusInternalServerError, Envelope{Error: "internal error"})
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, Envelope{Data: tenants})
+}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

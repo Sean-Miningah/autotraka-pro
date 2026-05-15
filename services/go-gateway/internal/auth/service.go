@@ -51,12 +51,36 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type TenantEntry struct {
+	TenantID   uuid.UUID `json:"tenant_id"`
+	TenantName string    `json:"tenant_name"`
+}
+
 var (
 	ErrEmailTaken    = errors.New("email already taken")
 	ErrInvalidCreds  = errors.New("invalid email or password")
 	ErrTokenExpired  = errors.New("refresh token expired")
 	ErrTokenNotFound = errors.New("refresh token not found")
+	ErrNoTenants     = errors.New("no tenants found")
 )
+
+func (s *Service) ListTenantsByEmail(ctx context.Context, email string) ([]TenantEntry, error) {
+	rows, err := s.queries.ListTenantsByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, ErrNoTenants
+	}
+	entries := make([]TenantEntry, len(rows))
+	for i, row := range rows {
+		entries[i] = TenantEntry{
+			TenantID:   row.ID,
+			TenantName: row.Name,
+		}
+	}
+	return entries, nil
+}
 
 func (s *Service) Register(ctx context.Context, req registerRequest) (registerResponse, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)

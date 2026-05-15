@@ -24,3 +24,8 @@ DELETE FROM refresh_tokens WHERE id = $1;
 
 -- name: DeleteRefreshTokensByMember :exec
 DELETE FROM refresh_tokens WHERE member_id = $1;
+
+-- name: ListTenantsByEmail :many
+SELECT t.id, t.name FROM tenants t
+JOIN members m ON m.tenant_id = t.id
+WHERE m.email = $1;

@@ -108,8 +108,8 @@ func TestProcessInboundMessageCreatesConversationAndContact(t *testing.T) {
 	if conv.Status != "open" {
 		t.Errorf("expected status open, got %s", conv.Status)
 	}
-	if conv.HandledBy != "ai" {
-		t.Errorf("expected handled_by ai, got %s", conv.HandledBy)
+	if conv.HandledBy != "human" {
+		t.Errorf("expected handled_by human for human_first tenant, got %s", conv.HandledBy)
 	}
 
 	if msg.ID == uuid.Nil {

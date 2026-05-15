@@ -360,6 +360,306 @@ func TestIntegrationSendTemplateMessageMissingParameter(t *testing.T) {
 	}
 }
 
+func TestIntegrationAIFirstMode(t *testing.T) {
+	ctx := context.Background()
+
+	pool, dbCleanup := testutil.SetupTestDB(t)
+	defer dbCleanup()
+	queries := sqlcgen.New(pool)
+
+	natsC, natsCleanup := startNATS(t)
+	defer natsCleanup()
+	natsURL, _ := natsC.ConnectionString(ctx)
+	eb, _ := eventbus.New(natsURL, nil)
+	defer eb.Close()
+
+	mockCh := &mockChannel{}
+	contactSvc := contact.NewService(queries)
+	convSvc := NewService(queries, contactSvc, nil, mockCh, eb)
+
+	// Start AI consumers
+	if err := convSvc.StartAIConsumers(ctx); err != nil {
+		t.Fatalf("StartAIConsumers failed: %v", err)
+	}
+
+	// Create tenant in AI-first mode
+	tenant, _ := queries.CreateTenant(ctx, sqlcgen.CreateTenantParams{Name: "AI Corp", Mode: "ai_first"})
+	ch, _ := queries.CreateChannel(ctx, sqlcgen.CreateChannelParams{
+		TenantID:    tenant.ID,
+		Name:        "WhatsApp Main",
+		ChannelType: "whatsapp",
+		Config:      []byte(`{"phone_number_id":"123456"}`),
+		Status:      "active",
+	})
+
+	// Subscribe to message.received events
+	receivedCh := make(chan eventbus.Event, 1)
+	_, _ = eb.Subscribe(ctx, "message.received", func(_ context.Context, evt eventbus.Event) error {
+		receivedCh <- evt
+		return nil
+	})
+
+	// Wait for NATS consumers to be ready
+	time.Sleep(500 * time.Millisecond)
+
+	// Process inbound message in AI-first mode
+	evt := channel.WebhookEvent{
+		EventID:   "EVT_AI_001",
+		From:      "15551234567",
+		MessageID: "MSG_AI_001",
+		Type:      "text",
+		Content:   []byte(`{"body":"Hello AI"}`),
+		Timestamp: time.Now().Unix(),
+	}
+
+	conv, msg, err := convSvc.ProcessInboundMessage(ctx, tenant.ID, ch.ID, evt)
+	if err != nil {
+		t.Fatalf("ProcessInboundMessage failed: %v", err)
+	}
+	if conv.HandledBy != "ai" {
+		t.Errorf("expected handled_by ai, got %s", conv.HandledBy)
+	}
+	if msg.Direction != "inbound" {
+		t.Errorf("expected message direction inbound, got %s", msg.Direction)
+	}
+
+	// Verify message.received was published
+	select {
+	case evt := <-receivedCh:
+		if evt.Subject != "message.received" {
+			t.Errorf("expected subject message.received, got %s", evt.Subject)
+		}
+		var payload MessageReceivedPayload
+		if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+			t.Fatalf("failed to unmarshal payload: %v", err)
+		}
+		if payload.ConversationID != conv.ID {
+			t.Errorf("expected conversation_id %s, got %s", conv.ID, payload.ConversationID)
+		}
+		if payload.Body != "Hello AI" {
+			t.Errorf("expected body 'Hello AI', got %s", payload.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for message.received event")
+	}
+
+	// Simulate AI response
+	aiResponse := AIResponsePayload{
+		ConversationID: conv.ID,
+		TenantID:       tenant.ID,
+		Body:           "Hello from AI",
+	}
+	aiRespBytes, _ := json.Marshal(aiResponse)
+	eb.Publish(ctx, "message.ai_response", json.RawMessage(aiRespBytes))
+
+	// Wait for AI response to be processed
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify AI response message was stored and sent
+	fullConv, err := convSvc.Get(ctx, tenant.ID, conv.ID)
+	if err != nil {
+		t.Fatalf("Get conversation failed: %v", err)
+	}
+	if len(fullConv.Messages) != 2 {
+		t.Errorf("expected 2 messages, got %d", len(fullConv.Messages))
+	}
+
+	var aiMsg *Message
+	for i := range fullConv.Messages {
+		if fullConv.Messages[i].Direction == "outbound" {
+			aiMsg = &fullConv.Messages[i]
+			break
+		}
+	}
+	if aiMsg == nil {
+		t.Fatal("expected AI outbound message")
+	}
+	if aiMsg.Status != "sent" {
+		t.Errorf("expected AI message status sent, got %s", aiMsg.Status)
+	}
+
+	// Verify channel received the send
+	if len(mockCh.calls) != 1 {
+		t.Fatalf("expected 1 channel call, got %d", len(mockCh.calls))
+	}
+	if mockCh.calls[0].Method != "SendTextMessage" {
+		t.Errorf("expected SendTextMessage, got %s", mockCh.calls[0].Method)
+	}
+
+	// Simulate AI handoff
+	handoffPayload := AIHandoffPayload{
+		ConversationID: conv.ID,
+		TenantID:       tenant.ID,
+		Reason:         "complex query",
+	}
+	handoffBytes, _ := json.Marshal(handoffPayload)
+	eb.Publish(ctx, "ai.handoff_request", json.RawMessage(handoffBytes))
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify conversation escalated to human
+	escalated, err := convSvc.Get(ctx, tenant.ID, conv.ID)
+	if err != nil {
+		t.Fatalf("Get conversation after handoff failed: %v", err)
+	}
+	if escalated.HandledBy != "human" {
+		t.Errorf("expected handled_by human after handoff, got %s", escalated.HandledBy)
+	}
+}
+
+func TestIntegrationHumanFirstMode(t *testing.T) {
+	ctx := context.Background()
+
+	pool, dbCleanup := testutil.SetupTestDB(t)
+	defer dbCleanup()
+	queries := sqlcgen.New(pool)
+
+	natsC, natsCleanup := startNATS(t)
+	defer natsCleanup()
+	natsURL, _ := natsC.ConnectionString(ctx)
+	eb, _ := eventbus.New(natsURL, nil)
+	defer eb.Close()
+
+	contactSvc := contact.NewService(queries)
+	convSvc := NewService(queries, contactSvc, nil, nil, eb)
+	if err := convSvc.StartAIConsumers(ctx); err != nil {
+		t.Fatalf("StartAIConsumers failed: %v", err)
+	}
+
+	// Create tenant in human-first mode (default)
+	tenant, _ := queries.CreateTenant(ctx, sqlcgen.CreateTenantParams{Name: "Human Corp", Mode: "human_first"})
+	ch, _ := queries.CreateChannel(ctx, sqlcgen.CreateChannelParams{
+		TenantID:    tenant.ID,
+		Name:        "WhatsApp Main",
+		ChannelType: "whatsapp",
+		Config:      []byte(`{"phone_number_id":"123456"}`),
+		Status:      "active",
+	})
+
+	// Subscribe to message.received (should NOT be published)
+	receivedCh := make(chan eventbus.Event, 1)
+	_, _ = eb.Subscribe(ctx, "message.received", func(_ context.Context, evt eventbus.Event) error {
+		receivedCh <- evt
+		return nil
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	evt := channel.WebhookEvent{
+		EventID:   "EVT_HUMAN_001",
+		From:      "15551234567",
+		MessageID: "MSG_HUMAN_001",
+		Type:      "text",
+		Content:   []byte(`{"body":"Hello human"}`),
+		Timestamp: time.Now().Unix(),
+	}
+
+	conv, _, err := convSvc.ProcessInboundMessage(ctx, tenant.ID, ch.ID, evt)
+	if err != nil {
+		t.Fatalf("ProcessInboundMessage failed: %v", err)
+	}
+	if conv.HandledBy != "human" {
+		t.Errorf("expected handled_by human, got %s", conv.HandledBy)
+	}
+
+	// Verify message.received was NOT published
+	select {
+	case <-receivedCh:
+		t.Fatal("unexpected message.received event in human-first mode")
+	case <-time.After(1 * time.Second):
+		// expected — no event
+	}
+}
+
+func TestIntegrationHybridMode(t *testing.T) {
+	ctx := context.Background()
+
+	pool, dbCleanup := testutil.SetupTestDB(t)
+	defer dbCleanup()
+	queries := sqlcgen.New(pool)
+
+	natsC, natsCleanup := startNATS(t)
+	defer natsCleanup()
+	natsURL, _ := natsC.ConnectionString(ctx)
+	eb, _ := eventbus.New(natsURL, nil)
+	defer eb.Close()
+
+	mockCh := &mockChannel{}
+	contactSvc := contact.NewService(queries)
+	convSvc := NewService(queries, contactSvc, nil, mockCh, eb)
+	if err := convSvc.StartAIConsumers(ctx); err != nil {
+		t.Fatalf("StartAIConsumers failed: %v", err)
+	}
+
+	// Create tenant in hybrid mode
+	tenant, _ := queries.CreateTenant(ctx, sqlcgen.CreateTenantParams{Name: "Hybrid Corp", Mode: "hybrid"})
+	ch, _ := queries.CreateChannel(ctx, sqlcgen.CreateChannelParams{
+		TenantID:    tenant.ID,
+		Name:        "WhatsApp Main",
+		ChannelType: "whatsapp",
+		Config:      []byte(`{"phone_number_id":"123456"}`),
+		Status:      "active",
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	evt := channel.WebhookEvent{
+		EventID:   "EVT_HYB_001",
+		From:      "15551234567",
+		MessageID: "MSG_HYB_001",
+		Type:      "text",
+		Content:   []byte(`{"body":"Hello hybrid"}`),
+		Timestamp: time.Now().Unix(),
+	}
+
+	conv, _, err := convSvc.ProcessInboundMessage(ctx, tenant.ID, ch.ID, evt)
+	if err != nil {
+		t.Fatalf("ProcessInboundMessage failed: %v", err)
+	}
+	if conv.HandledBy != "hybrid" {
+		t.Errorf("expected handled_by hybrid, got %s", conv.HandledBy)
+	}
+
+	// Simulate AI response in hybrid mode
+	aiResponse := AIResponsePayload{
+		ConversationID: conv.ID,
+		TenantID:       tenant.ID,
+		Body:           "Hybrid AI suggestion",
+	}
+	aiRespBytes, _ := json.Marshal(aiResponse)
+	eb.Publish(ctx, "message.ai_response", json.RawMessage(aiRespBytes))
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify AI response stored as pending (draft) and NOT sent
+	fullConv, err := convSvc.Get(ctx, tenant.ID, conv.ID)
+	if err != nil {
+		t.Fatalf("Get conversation failed: %v", err)
+	}
+	if len(fullConv.Messages) != 2 {
+		t.Errorf("expected 2 messages, got %d", len(fullConv.Messages))
+	}
+
+	var aiMsg *Message
+	for i := range fullConv.Messages {
+		if fullConv.Messages[i].Direction == "outbound" {
+			aiMsg = &fullConv.Messages[i]
+			break
+		}
+	}
+	if aiMsg == nil {
+		t.Fatal("expected AI outbound message")
+	}
+	if aiMsg.Status != "pending" {
+		t.Errorf("expected AI message status pending (draft), got %s", aiMsg.Status)
+	}
+
+	// Verify channel did NOT receive any send
+	if len(mockCh.calls) != 0 {
+		t.Errorf("expected 0 channel calls in hybrid mode, got %d", len(mockCh.calls))
+	}
+}
+
 func TestIntegrationSendTemplateMessageInvalidTemplate(t *testing.T) {
 	ctx := context.Background()
 

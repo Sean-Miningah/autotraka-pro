@@ -78,6 +78,16 @@ type Message struct {
 	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
+// MessageReceivedPayload is sent to the AI service when an inbound message
+// arrives in an AI-handled conversation.
+type MessageReceivedPayload struct {
+	ConversationID uuid.UUID `json:"conversation_id"`
+	MessageID      uuid.UUID `json:"message_id"`
+	ContactID      uuid.UUID `json:"contact_id"`
+	Body           string    `json:"body"`
+	Type           string    `json:"type"`
+}
+
 // ProcessInboundMessage handles an inbound webhook event: resolves contact,
 // finds or creates conversation, stores message.
 func (s *Service) ProcessInboundMessage(ctx context.Context, tenantID, channelID uuid.UUID, evt channel.WebhookEvent) (*Conversation, *Message, error) {
@@ -111,13 +121,27 @@ func (s *Service) ProcessInboundMessage(ctx context.Context, tenantID, channelID
 		if err == nil && lastConv.Status == sqlcgen.ConversationStatusClosed {
 			prevConvID = pgtype.UUID{Bytes: lastConv.ID, Valid: true}
 		}
+
+		// Determine handled_by based on tenant mode
+		handledBy := sqlcgen.HandledByAi
+		if tenant, terr := s.queries.GetTenant(ctx, tenantID); terr == nil {
+			switch tenant.Mode {
+			case "human_first":
+				handledBy = sqlcgen.HandledByHuman
+			case "hybrid":
+				handledBy = sqlcgen.HandledByHybrid
+			default:
+				handledBy = sqlcgen.HandledByAi
+			}
+		}
+
 		// Create new conversation
 		conv, err = s.queries.CreateConversation(ctx, sqlcgen.CreateConversationParams{
 			TenantID:               tenantID,
 			ContactID:              c.ID,
 			Status:                 sqlcgen.ConversationStatusOpen,
 			AssignedMemberID:       pgtype.UUID{Valid: false},
-			HandledBy:              sqlcgen.HandledByAi,
+			HandledBy:              handledBy,
 			PreviousConversationID: prevConvID,
 		})
 		if err != nil {
@@ -126,7 +150,18 @@ func (s *Service) ProcessInboundMessage(ctx context.Context, tenantID, channelID
 	}
 
 	// Store the inbound message
-	content, _ := json.Marshal(map[string]interface{}{"text": string(evt.Content)})
+	var textBody string
+	if len(evt.Content) > 0 {
+		var parsed struct {
+			Body string `json:"body"`
+		}
+		if err := json.Unmarshal(evt.Content, &parsed); err == nil && parsed.Body != "" {
+			textBody = parsed.Body
+		} else {
+			textBody = string(evt.Content)
+		}
+	}
+	content, _ := json.Marshal(map[string]interface{}{"text": textBody})
 	msg, err := s.queries.CreateMessage(ctx, sqlcgen.CreateMessageParams{
 		TenantID:       tenantID,
 		ConversationID: conv.ID,
@@ -142,6 +177,27 @@ func (s *Service) ProcessInboundMessage(ctx context.Context, tenantID, channelID
 
 	conversation := s.toConversation(conv)
 	message := s.toMessage(msg)
+
+	// In AI-first mode, publish message to AI service
+	if s.eventbus != nil && conv.HandledBy == sqlcgen.HandledByAi {
+		var inboundText string
+		var parsed struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(msg.Content, &parsed); err == nil {
+			inboundText = parsed.Text
+		} else {
+			inboundText = string(msg.Content)
+		}
+		ctx = eventbus.WithTenantID(ctx, tenantID)
+		_ = s.eventbus.Publish(ctx, "message.received", &MessageReceivedPayload{
+			ConversationID: conv.ID,
+			MessageID:      msg.ID,
+			ContactID:      c.ID,
+			Body:           inboundText,
+			Type:           "text",
+		})
+	}
 
 	// Check automation triggers
 	var textContent string
@@ -518,4 +574,166 @@ func (s *Service) toMessage(row sqlcgen.Message) Message {
 		m.ChannelID = &uid
 	}
 	return m
+}
+
+// AIResponsePayload is the expected shape of a message.ai_response event.
+type AIResponsePayload struct {
+	ConversationID uuid.UUID `json:"conversation_id"`
+	TenantID       uuid.UUID `json:"tenant_id"`
+	Body           string    `json:"body"`
+}
+
+// AIHandoffPayload is the expected shape of an ai.handoff_request event.
+type AIHandoffPayload struct {
+	ConversationID uuid.UUID `json:"conversation_id"`
+	TenantID       uuid.UUID `json:"tenant_id"`
+	Reason         string    `json:"reason,omitempty"`
+}
+
+// HandleAIResponse stores an AI-generated outbound message and sends it.
+// In hybrid mode the message is stored as pending and not sent immediately.
+func (s *Service) HandleAIResponse(ctx context.Context, payload AIResponsePayload) (*Message, error) {
+	// Verify conversation exists and belongs to tenant
+	conv, err := s.queries.GetConversationByID(ctx, sqlcgen.GetConversationByIDParams{
+		ID:       payload.ConversationID,
+		TenantID: payload.TenantID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	// Resolve primary channel
+	channels, err := s.queries.ListChannelsByTenantAndType(ctx, sqlcgen.ListChannelsByTenantAndTypeParams{
+		TenantID:    payload.TenantID,
+		ChannelType: "whatsapp",
+	})
+	if err != nil || len(channels) == 0 {
+		return nil, fmt.Errorf("no whatsapp channel found")
+	}
+	channelID := pgtype.UUID{Bytes: channels[0].ID, Valid: true}
+
+	content, _ := json.Marshal(map[string]interface{}{"text": payload.Body})
+
+	status := sqlcgen.MessageStatusSent
+	if conv.HandledBy == sqlcgen.HandledByHybrid {
+		status = sqlcgen.MessageStatusPending
+	}
+
+	msg, err := s.queries.CreateMessage(ctx, sqlcgen.CreateMessageParams{
+		TenantID:       payload.TenantID,
+		ConversationID: payload.ConversationID,
+		ChannelID:      channelID,
+		Direction:      sqlcgen.MessageDirectionOutbound,
+		Status:         status,
+		ContentType:    "text",
+		Content:        content,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create message: %w", err)
+	}
+
+	message := s.toMessage(msg)
+
+	// Send via channel only in AI-first mode; hybrid stays pending
+	if conv.HandledBy == sqlcgen.HandledByAi {
+		phones, err := s.queries.ListContactPhones(ctx, conv.ContactID)
+		if err != nil || len(phones) == 0 {
+			return nil, fmt.Errorf("contact has no phone number")
+		}
+		to := phones[0].Phone
+		if err := s.ch.SendTextMessage(ctx, to, payload.Body); err != nil {
+			return nil, fmt.Errorf("send text: %w", err)
+		}
+	}
+
+	// Publish outbound event
+	if s.eventbus != nil {
+		ctx = eventbus.WithTenantID(ctx, payload.TenantID)
+		_ = s.eventbus.Publish(ctx, "message.outbound", map[string]interface{}{
+			"message_id":      msg.ID,
+			"conversation_id": payload.ConversationID,
+			"tenant_id":       payload.TenantID,
+			"direction":       "outbound",
+			"status":          string(status),
+		})
+	}
+
+	return &message, nil
+}
+
+// HandleAIHandoff escalates a conversation from AI to human.
+func (s *Service) HandleAIHandoff(ctx context.Context, payload AIHandoffPayload) error {
+	existing, err := s.queries.GetConversationByID(ctx, sqlcgen.GetConversationByIDParams{
+		ID:       payload.ConversationID,
+		TenantID: payload.TenantID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	updated, err := s.queries.UpdateConversation(ctx, sqlcgen.UpdateConversationParams{
+		Status:           existing.Status,
+		AssignedMemberID: existing.AssignedMemberID,
+		HandledBy:        sqlcgen.HandledByHuman,
+		ID:               payload.ConversationID,
+		TenantID:         payload.TenantID,
+	})
+	if err != nil {
+		return err
+	}
+
+	if s.eventbus != nil {
+		ctx = eventbus.WithTenantID(ctx, payload.TenantID)
+		_ = s.eventbus.Publish(ctx, "conversation.updated", map[string]interface{}{
+			"conversation_id": payload.ConversationID,
+			"tenant_id":       payload.TenantID,
+			"status":          string(updated.Status),
+			"handled_by":      string(updated.HandledBy),
+		})
+		_ = s.eventbus.Publish(ctx, "conversation.escalated", map[string]interface{}{
+			"conversation_id": payload.ConversationID,
+			"tenant_id":       payload.TenantID,
+			"reason":          payload.Reason,
+		})
+	}
+
+	return nil
+}
+
+// StartAIConsumers sets up NATS subscriptions for AI integration events.
+func (s *Service) StartAIConsumers(ctx context.Context) error {
+	if s.eventbus == nil {
+		return nil
+	}
+
+	_, err := s.eventbus.Subscribe(ctx, "message.ai_response", func(_ context.Context, evt eventbus.Event) error {
+		var payload AIResponsePayload
+		if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+			return fmt.Errorf("unmarshal ai response: %w", err)
+		}
+		_, err := s.HandleAIResponse(context.Background(), payload)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("subscribe message.ai_response: %w", err)
+	}
+
+	_, err = s.eventbus.Subscribe(ctx, "ai.handoff_request", func(_ context.Context, evt eventbus.Event) error {
+		var payload AIHandoffPayload
+		if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+			return fmt.Errorf("unmarshal handoff request: %w", err)
+		}
+		return s.HandleAIHandoff(context.Background(), payload)
+	})
+	if err != nil {
+		return fmt.Errorf("subscribe ai.handoff_request: %w", err)
+	}
+
+	return nil
 }

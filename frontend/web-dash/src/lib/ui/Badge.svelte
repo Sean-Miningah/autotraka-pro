@@ -4,9 +4,10 @@
 	interface Props {
 		variant?: BadgeVariant;
 		class?: string;
+		children?: import('svelte').Snippet;
 	}
 
-	let { variant = 'default', class: className = '' }: Props = $props();
+	let { variant = 'default', class: className = '', children }: Props = $props();
 
 	const variantClasses: Record<BadgeVariant, string> = {
 		default: 'bg-surface text-text border-text dark:bg-surface-dark dark:text-text-dark dark:border-text-dark',
@@ -21,5 +22,5 @@
 </script>
 
 <span class="inline-flex items-center rounded-sm border-2 px-2 py-0.5 text-xs font-heading font-semibold {variantClasses[variant]} {className}">
-	<slot />
+	{#if children}{@render children()}{/if}
 </span>

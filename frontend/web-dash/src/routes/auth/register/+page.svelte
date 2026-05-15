@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button, Card, Input } from '$lib/ui';
+	import { deserialize } from '$app/forms';
 
 	let tenantName = $state('');
 	let email = $state('');
@@ -15,23 +16,30 @@
 		const form = e.target as HTMLFormElement;
 		const formData = new FormData(form);
 
-		const response = await fetch('?/register', {
-			method: 'POST',
-			body: formData
-		});
+		try {
+			const response = await fetch('?/register', {
+				method: 'POST',
+				body: formData
+			});
 
-		const result = await response.json();
+			const text = await response.text();
+			const wrapper = JSON.parse(text);
+			const result = deserialize(wrapper.data);
 
-		if (result.type === 'success' && result.data?.success) {
-			if (result.data.access_token) {
-				window.location.href = `/?access_token=${encodeURIComponent(result.data.access_token)}`;
+			if (result.success) {
+				if (result.access_token) {
+					window.location.href = `/?access_token=${encodeURIComponent(result.access_token)}`;
+				} else {
+					window.location.href = '/auth/login';
+				}
 			} else {
-				window.location.href = '/auth/login';
+				error = result.error || 'Registration failed';
 			}
-		} else {
-			error = result.data?.error || 'Registration failed';
+		} catch {
+			error = 'Registration failed. Please try again.';
+		} finally {
+			loading = false;
 		}
-		loading = false;
 	}
 </script>
 

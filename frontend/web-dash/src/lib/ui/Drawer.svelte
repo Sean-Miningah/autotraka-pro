@@ -19,7 +19,7 @@
 </script>
 
 {#if open}
-	<div class="fixed inset-0 z-40 bg-text/50" onclick={onclose} role="button" tabindex={-1} aria-label="Close drawer"></div>
+	<div class="fixed inset-0 z-40 bg-text/50" onclick={onclose} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onclose(); } }} role="button" tabindex={-1} aria-label="Close drawer"></div>
 	<div class="z-50 border-2 border-text bg-base p-4 shadow-[4px_4px_0px] shadow-text dark:border-text-dark dark:bg-base-dark dark:shadow-text-dark {sideClasses[side]} {className}">
 		<button class="absolute right-2 top-2 text-text hover:text-danger dark:text-text-dark" onclick={onclose} aria-label="Close">
 			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>

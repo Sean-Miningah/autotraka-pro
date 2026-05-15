@@ -9,8 +9,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/autotraka/go-gateway/internal/analytics"
 	"github.com/autotraka/go-gateway/internal/auth"
 	"github.com/autotraka/go-gateway/internal/automation"
+	"github.com/autotraka/go-gateway/internal/broadcast"
 	"github.com/autotraka/go-gateway/internal/channel"
 	"github.com/autotraka/go-gateway/internal/config"
 	"github.com/autotraka/go-gateway/internal/contact"
@@ -20,6 +22,7 @@ import (
 	"github.com/autotraka/go-gateway/internal/health"
 	migratepkg "github.com/autotraka/go-gateway/internal/migrate"
 	applog "github.com/autotraka/go-gateway/internal/log"
+	redisclient "github.com/autotraka/go-gateway/internal/redis"
 	"github.com/autotraka/go-gateway/internal/scheduler"
 	"github.com/autotraka/go-gateway/internal/sqlcgen"
 	"github.com/autotraka/go-gateway/internal/template"
@@ -102,6 +105,31 @@ func main() {
 
 	convSvc := conversation.NewService(queries, contactSvc, templateSvc, wa, eb)
 	convHandler := conversation.NewHandler(convSvc)
+	if err := convSvc.StartAIConsumers(ctx); err != nil {
+		logger.Error("failed to start AI consumers", "error", err)
+	}
+
+	// Redis client for rate limiting
+	var rateLimiter broadcast.RateLimiter = &broadcast.NoopRateLimiter{}
+	if cfg.RedisURL != "" {
+		redisClient, err := redisclient.New(cfg.RedisURL)
+		if err != nil {
+			logger.Warn("failed to connect to redis, using noop rate limiter", "error", err)
+		} else {
+			if err := redisClient.Ping(ctx); err != nil {
+				logger.Warn("redis ping failed, using noop rate limiter", "error", err)
+			} else {
+				rateLimiter = broadcast.NewRedisRateLimiter(redisClient.Client, time.Minute, 80) // 80 per minute (Meta limit)
+			}
+		}
+	}
+
+	broadcastSvc := broadcast.NewService(queries, wa, rateLimiter)
+	broadcastHandler := broadcast.NewHandler(broadcastSvc)
+
+	// Analytics
+	analyticsSvc := analytics.NewService(queries)
+	analyticsHandler := analytics.NewHandler(analyticsSvc)
 
 	wsHub := websocket.NewHub(eb)
 	wsHub.Run()
@@ -116,8 +144,12 @@ func main() {
 	// Scheduler with distributed locking.
 	sched := scheduler.New(queries)
 	hc := scheduler.NewHealthChecker(queries)
+	broadcastSched := broadcast.NewSchedulerTask(broadcastSvc)
 	sched.RegisterTask("channel-health", 5*time.Minute, hc.CheckAllChannels)
 	sched.RegisterTask("template-status-sync", 10*time.Minute, templateSvc.SyncPendingStatuses)
+	sched.RegisterTask("broadcast-scheduler", 30*time.Second, broadcastSched.Run)
+	analyticsAggregator := analytics.NewAggregatorTask(queries)
+	sched.RegisterTask("analytics-aggregate", 24*time.Hour, analyticsAggregator.Run)
 	sched.Start(ctx)
 
 	r := chi.NewRouter()
@@ -151,6 +183,8 @@ func main() {
 		templateHandler.RegisterRoutes(r)
 		autoHandler.RegisterRoutes(r)
 		channelHealthHandler.RegisterRoutes(r)
+		broadcastHandler.RegisterRoutes(r)
+		analyticsHandler.RegisterRoutes(r)
 		r.Get("/api/v1/me", func(w http.ResponseWriter, r *http.Request) {
 			auth.WriteJSON(w, http.StatusOK, auth.Envelope{
 				Data: map[string]interface{}{

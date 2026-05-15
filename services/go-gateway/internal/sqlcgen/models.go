@@ -19,6 +19,8 @@ const (
 	AutomationRunStatusRunning   AutomationRunStatus = "running"
 	AutomationRunStatusCompleted AutomationRunStatus = "completed"
 	AutomationRunStatusFailed    AutomationRunStatus = "failed"
+	AutomationRunStatusPaused    AutomationRunStatus = "paused"
+	AutomationRunStatusWaiting   AutomationRunStatus = "waiting"
 )
 
 func (e *AutomationRunStatus) Scan(src interface{}) error {
@@ -96,6 +98,94 @@ func (ns NullAutomationStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.AutomationStatus), nil
+}
+
+type BroadcastRecipientStatus string
+
+const (
+	BroadcastRecipientStatusPending BroadcastRecipientStatus = "pending"
+	BroadcastRecipientStatusSent    BroadcastRecipientStatus = "sent"
+	BroadcastRecipientStatusFailed  BroadcastRecipientStatus = "failed"
+)
+
+func (e *BroadcastRecipientStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BroadcastRecipientStatus(s)
+	case string:
+		*e = BroadcastRecipientStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BroadcastRecipientStatus: %T", src)
+	}
+	return nil
+}
+
+type NullBroadcastRecipientStatus struct {
+	BroadcastRecipientStatus BroadcastRecipientStatus `json:"broadcast_recipient_status"`
+	Valid                    bool                     `json:"valid"` // Valid is true if BroadcastRecipientStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBroadcastRecipientStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.BroadcastRecipientStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BroadcastRecipientStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBroadcastRecipientStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BroadcastRecipientStatus), nil
+}
+
+type BroadcastStatus string
+
+const (
+	BroadcastStatusDraft     BroadcastStatus = "draft"
+	BroadcastStatusScheduled BroadcastStatus = "scheduled"
+	BroadcastStatusSending   BroadcastStatus = "sending"
+	BroadcastStatusCompleted BroadcastStatus = "completed"
+	BroadcastStatusFailed    BroadcastStatus = "failed"
+)
+
+func (e *BroadcastStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BroadcastStatus(s)
+	case string:
+		*e = BroadcastStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BroadcastStatus: %T", src)
+	}
+	return nil
+}
+
+type NullBroadcastStatus struct {
+	BroadcastStatus BroadcastStatus `json:"broadcast_status"`
+	Valid           bool            `json:"valid"` // Valid is true if BroadcastStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBroadcastStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.BroadcastStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BroadcastStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBroadcastStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BroadcastStatus), nil
 }
 
 type ConversationStatus string
@@ -317,6 +407,17 @@ func (ns NullTemplateStatus) Value() (driver.Value, error) {
 	return string(ns.TemplateStatus), nil
 }
 
+type AnalyticsDaily struct {
+	ID          uuid.UUID   `json:"id"`
+	TenantID    uuid.UUID   `json:"tenant_id"`
+	Date        pgtype.Date `json:"date"`
+	ChannelType pgtype.Text `json:"channel_type"`
+	MetricType  string      `json:"metric_type"`
+	Value       float64     `json:"value"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+}
+
 type Automation struct {
 	ID         uuid.UUID        `json:"id"`
 	TenantID   uuid.UUID        `json:"tenant_id"`
@@ -336,6 +437,35 @@ type AutomationRun struct {
 	Status           AutomationRunStatus `json:"status"`
 	StartedAt        time.Time           `json:"started_at"`
 	CompletedAt      pgtype.Timestamptz  `json:"completed_at"`
+	CurrentNodeID    pgtype.Text         `json:"current_node_id"`
+	Variables        []byte              `json:"variables"`
+	ResumeAt         pgtype.Timestamptz  `json:"resume_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+type Broadcast struct {
+	ID          uuid.UUID          `json:"id"`
+	TenantID    uuid.UUID          `json:"tenant_id"`
+	Title       string             `json:"title"`
+	TemplateID  pgtype.UUID        `json:"template_id"`
+	Parameters  []byte             `json:"parameters"`
+	ChannelID   pgtype.UUID        `json:"channel_id"`
+	Status      BroadcastStatus    `json:"status"`
+	ScheduledAt pgtype.Timestamptz `json:"scheduled_at"`
+	StartedAt   pgtype.Timestamptz `json:"started_at"`
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+type BroadcastRecipient struct {
+	ID          uuid.UUID                `json:"id"`
+	BroadcastID uuid.UUID                `json:"broadcast_id"`
+	ContactID   uuid.UUID                `json:"contact_id"`
+	Status      BroadcastRecipientStatus `json:"status"`
+	SentAt      pgtype.Timestamptz       `json:"sent_at"`
+	Error       pgtype.Text              `json:"error"`
+	CreatedAt   time.Time                `json:"created_at"`
 }
 
 type Channel struct {
@@ -370,12 +500,33 @@ type Contact struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
+type ContactCustomField struct {
+	ContactID uuid.UUID `json:"contact_id"`
+	FieldID   uuid.UUID `json:"field_id"`
+	Value     string    `json:"value"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type ContactPhone struct {
 	ID        uuid.UUID   `json:"id"`
 	ContactID uuid.UUID   `json:"contact_id"`
 	Phone     string      `json:"phone"`
 	Label     pgtype.Text `json:"label"`
 	CreatedAt time.Time   `json:"created_at"`
+}
+
+type ContactTag struct {
+	ID        uuid.UUID `json:"id"`
+	TenantID  uuid.UUID `json:"tenant_id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type ContactTagLink struct {
+	ContactID uuid.UUID `json:"contact_id"`
+	TagID     uuid.UUID `json:"tag_id"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Conversation struct {
@@ -388,6 +539,15 @@ type Conversation struct {
 	PreviousConversationID pgtype.UUID        `json:"previous_conversation_id"`
 	CreatedAt              time.Time          `json:"created_at"`
 	UpdatedAt              time.Time          `json:"updated_at"`
+}
+
+type CustomField struct {
+	ID        uuid.UUID `json:"id"`
+	TenantID  uuid.UUID `json:"tenant_id"`
+	Name      string    `json:"name"`
+	FieldType string    `json:"field_type"`
+	Options   []byte    `json:"options"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Member struct {

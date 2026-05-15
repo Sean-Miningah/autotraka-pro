@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -57,9 +58,9 @@ func (q *Queries) CreateAutomation(ctx context.Context, arg CreateAutomationPara
 }
 
 const createAutomationRun = `-- name: CreateAutomationRun :one
-INSERT INTO automation_runs (automation_id, tenant_id, conversation_id, trigger_message_id, status)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, automation_id, tenant_id, conversation_id, trigger_message_id, status, started_at, completed_at
+INSERT INTO automation_runs (automation_id, tenant_id, conversation_id, trigger_message_id, status, current_node_id, variables)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, automation_id, tenant_id, conversation_id, trigger_message_id, status, current_node_id, variables, resume_at, started_at, completed_at, updated_at
 `
 
 type CreateAutomationRunParams struct {
@@ -68,17 +69,36 @@ type CreateAutomationRunParams struct {
 	ConversationID   pgtype.UUID         `json:"conversation_id"`
 	TriggerMessageID pgtype.UUID         `json:"trigger_message_id"`
 	Status           AutomationRunStatus `json:"status"`
+	CurrentNodeID    pgtype.Text         `json:"current_node_id"`
+	Variables        []byte              `json:"variables"`
 }
 
-func (q *Queries) CreateAutomationRun(ctx context.Context, arg CreateAutomationRunParams) (AutomationRun, error) {
+type CreateAutomationRunRow struct {
+	ID               uuid.UUID           `json:"id"`
+	AutomationID     uuid.UUID           `json:"automation_id"`
+	TenantID         uuid.UUID           `json:"tenant_id"`
+	ConversationID   pgtype.UUID         `json:"conversation_id"`
+	TriggerMessageID pgtype.UUID         `json:"trigger_message_id"`
+	Status           AutomationRunStatus `json:"status"`
+	CurrentNodeID    pgtype.Text         `json:"current_node_id"`
+	Variables        []byte              `json:"variables"`
+	ResumeAt         pgtype.Timestamptz  `json:"resume_at"`
+	StartedAt        time.Time           `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz  `json:"completed_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+func (q *Queries) CreateAutomationRun(ctx context.Context, arg CreateAutomationRunParams) (CreateAutomationRunRow, error) {
 	row := q.db.QueryRow(ctx, createAutomationRun,
 		arg.AutomationID,
 		arg.TenantID,
 		arg.ConversationID,
 		arg.TriggerMessageID,
 		arg.Status,
+		arg.CurrentNodeID,
+		arg.Variables,
 	)
-	var i AutomationRun
+	var i CreateAutomationRunRow
 	err := row.Scan(
 		&i.ID,
 		&i.AutomationID,
@@ -86,8 +106,12 @@ func (q *Queries) CreateAutomationRun(ctx context.Context, arg CreateAutomationR
 		&i.ConversationID,
 		&i.TriggerMessageID,
 		&i.Status,
+		&i.CurrentNodeID,
+		&i.Variables,
+		&i.ResumeAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -131,6 +155,100 @@ func (q *Queries) GetAutomationByID(ctx context.Context, arg GetAutomationByIDPa
 	return i, err
 }
 
+const getAutomationRunByID = `-- name: GetAutomationRunByID :one
+SELECT id, automation_id, tenant_id, conversation_id, trigger_message_id, status, current_node_id, variables, resume_at, started_at, completed_at, updated_at
+FROM automation_runs WHERE id = $1
+`
+
+type GetAutomationRunByIDRow struct {
+	ID               uuid.UUID           `json:"id"`
+	AutomationID     uuid.UUID           `json:"automation_id"`
+	TenantID         uuid.UUID           `json:"tenant_id"`
+	ConversationID   pgtype.UUID         `json:"conversation_id"`
+	TriggerMessageID pgtype.UUID         `json:"trigger_message_id"`
+	Status           AutomationRunStatus `json:"status"`
+	CurrentNodeID    pgtype.Text         `json:"current_node_id"`
+	Variables        []byte              `json:"variables"`
+	ResumeAt         pgtype.Timestamptz  `json:"resume_at"`
+	StartedAt        time.Time           `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz  `json:"completed_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+func (q *Queries) GetAutomationRunByID(ctx context.Context, id uuid.UUID) (GetAutomationRunByIDRow, error) {
+	row := q.db.QueryRow(ctx, getAutomationRunByID, id)
+	var i GetAutomationRunByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.AutomationID,
+		&i.TenantID,
+		&i.ConversationID,
+		&i.TriggerMessageID,
+		&i.Status,
+		&i.CurrentNodeID,
+		&i.Variables,
+		&i.ResumeAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getWaitingRunsByConversation = `-- name: GetWaitingRunsByConversation :many
+SELECT id, automation_id, tenant_id, conversation_id, trigger_message_id, status, current_node_id, variables, resume_at, started_at, completed_at, updated_at
+FROM automation_runs
+WHERE conversation_id = $1 AND status = 'waiting'
+`
+
+type GetWaitingRunsByConversationRow struct {
+	ID               uuid.UUID           `json:"id"`
+	AutomationID     uuid.UUID           `json:"automation_id"`
+	TenantID         uuid.UUID           `json:"tenant_id"`
+	ConversationID   pgtype.UUID         `json:"conversation_id"`
+	TriggerMessageID pgtype.UUID         `json:"trigger_message_id"`
+	Status           AutomationRunStatus `json:"status"`
+	CurrentNodeID    pgtype.Text         `json:"current_node_id"`
+	Variables        []byte              `json:"variables"`
+	ResumeAt         pgtype.Timestamptz  `json:"resume_at"`
+	StartedAt        time.Time           `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz  `json:"completed_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+func (q *Queries) GetWaitingRunsByConversation(ctx context.Context, conversationID pgtype.UUID) ([]GetWaitingRunsByConversationRow, error) {
+	rows, err := q.db.Query(ctx, getWaitingRunsByConversation, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetWaitingRunsByConversationRow{}
+	for rows.Next() {
+		var i GetWaitingRunsByConversationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AutomationID,
+			&i.TenantID,
+			&i.ConversationID,
+			&i.TriggerMessageID,
+			&i.Status,
+			&i.CurrentNodeID,
+			&i.Variables,
+			&i.ResumeAt,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActiveAutomationsByTenant = `-- name: ListActiveAutomationsByTenant :many
 SELECT id, tenant_id, name, status, definition, created_at, updated_at
 FROM automations WHERE tenant_id = $1 AND status = 'active'
@@ -165,20 +283,35 @@ func (q *Queries) ListActiveAutomationsByTenant(ctx context.Context, tenantID uu
 }
 
 const listAutomationRunsByAutomation = `-- name: ListAutomationRunsByAutomation :many
-SELECT id, automation_id, tenant_id, conversation_id, trigger_message_id, status, started_at, completed_at
+SELECT id, automation_id, tenant_id, conversation_id, trigger_message_id, status, current_node_id, variables, resume_at, started_at, completed_at, updated_at
 FROM automation_runs WHERE automation_id = $1
 ORDER BY started_at DESC
 `
 
-func (q *Queries) ListAutomationRunsByAutomation(ctx context.Context, automationID uuid.UUID) ([]AutomationRun, error) {
+type ListAutomationRunsByAutomationRow struct {
+	ID               uuid.UUID           `json:"id"`
+	AutomationID     uuid.UUID           `json:"automation_id"`
+	TenantID         uuid.UUID           `json:"tenant_id"`
+	ConversationID   pgtype.UUID         `json:"conversation_id"`
+	TriggerMessageID pgtype.UUID         `json:"trigger_message_id"`
+	Status           AutomationRunStatus `json:"status"`
+	CurrentNodeID    pgtype.Text         `json:"current_node_id"`
+	Variables        []byte              `json:"variables"`
+	ResumeAt         pgtype.Timestamptz  `json:"resume_at"`
+	StartedAt        time.Time           `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz  `json:"completed_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+func (q *Queries) ListAutomationRunsByAutomation(ctx context.Context, automationID uuid.UUID) ([]ListAutomationRunsByAutomationRow, error) {
 	rows, err := q.db.Query(ctx, listAutomationRunsByAutomation, automationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []AutomationRun{}
+	items := []ListAutomationRunsByAutomationRow{}
 	for rows.Next() {
-		var i AutomationRun
+		var i ListAutomationRunsByAutomationRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.AutomationID,
@@ -186,8 +319,12 @@ func (q *Queries) ListAutomationRunsByAutomation(ctx context.Context, automation
 			&i.ConversationID,
 			&i.TriggerMessageID,
 			&i.Status,
+			&i.CurrentNodeID,
+			&i.Variables,
+			&i.ResumeAt,
 			&i.StartedAt,
 			&i.CompletedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -239,6 +376,63 @@ func (q *Queries) ListAutomationsByTenant(ctx context.Context, arg ListAutomatio
 	return items, nil
 }
 
+const pollAutomationRunsForResume = `-- name: PollAutomationRunsForResume :many
+SELECT id, automation_id, tenant_id, conversation_id, trigger_message_id, status, current_node_id, variables, resume_at, started_at, completed_at, updated_at
+FROM automation_runs
+WHERE status IN ('paused', 'waiting') AND resume_at <= now()
+ORDER BY resume_at ASC
+FOR UPDATE SKIP LOCKED
+LIMIT $1
+`
+
+type PollAutomationRunsForResumeRow struct {
+	ID               uuid.UUID           `json:"id"`
+	AutomationID     uuid.UUID           `json:"automation_id"`
+	TenantID         uuid.UUID           `json:"tenant_id"`
+	ConversationID   pgtype.UUID         `json:"conversation_id"`
+	TriggerMessageID pgtype.UUID         `json:"trigger_message_id"`
+	Status           AutomationRunStatus `json:"status"`
+	CurrentNodeID    pgtype.Text         `json:"current_node_id"`
+	Variables        []byte              `json:"variables"`
+	ResumeAt         pgtype.Timestamptz  `json:"resume_at"`
+	StartedAt        time.Time           `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz  `json:"completed_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+func (q *Queries) PollAutomationRunsForResume(ctx context.Context, limit int32) ([]PollAutomationRunsForResumeRow, error) {
+	rows, err := q.db.Query(ctx, pollAutomationRunsForResume, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PollAutomationRunsForResumeRow{}
+	for rows.Next() {
+		var i PollAutomationRunsForResumeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AutomationID,
+			&i.TenantID,
+			&i.ConversationID,
+			&i.TriggerMessageID,
+			&i.Status,
+			&i.CurrentNodeID,
+			&i.Variables,
+			&i.ResumeAt,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateAutomation = `-- name: UpdateAutomation :one
 UPDATE automations SET
     name = $1,
@@ -278,20 +472,49 @@ func (q *Queries) UpdateAutomation(ctx context.Context, arg UpdateAutomationPara
 	return i, err
 }
 
-const updateAutomationRunStatus = `-- name: UpdateAutomationRunStatus :one
-UPDATE automation_runs SET status = $1, completed_at = now()
-WHERE id = $2
-RETURNING id, automation_id, tenant_id, conversation_id, trigger_message_id, status, started_at, completed_at
+const updateAutomationRunState = `-- name: UpdateAutomationRunState :one
+UPDATE automation_runs SET
+    status = $1,
+    current_node_id = $2,
+    variables = $3,
+    resume_at = $4,
+    updated_at = now()
+WHERE id = $5
+RETURNING id, automation_id, tenant_id, conversation_id, trigger_message_id, status, current_node_id, variables, resume_at, started_at, completed_at, updated_at
 `
 
-type UpdateAutomationRunStatusParams struct {
-	Status AutomationRunStatus `json:"status"`
-	ID     uuid.UUID           `json:"id"`
+type UpdateAutomationRunStateParams struct {
+	Status        AutomationRunStatus `json:"status"`
+	CurrentNodeID pgtype.Text         `json:"current_node_id"`
+	Variables     []byte              `json:"variables"`
+	ResumeAt      pgtype.Timestamptz  `json:"resume_at"`
+	ID            uuid.UUID           `json:"id"`
 }
 
-func (q *Queries) UpdateAutomationRunStatus(ctx context.Context, arg UpdateAutomationRunStatusParams) (AutomationRun, error) {
-	row := q.db.QueryRow(ctx, updateAutomationRunStatus, arg.Status, arg.ID)
-	var i AutomationRun
+type UpdateAutomationRunStateRow struct {
+	ID               uuid.UUID           `json:"id"`
+	AutomationID     uuid.UUID           `json:"automation_id"`
+	TenantID         uuid.UUID           `json:"tenant_id"`
+	ConversationID   pgtype.UUID         `json:"conversation_id"`
+	TriggerMessageID pgtype.UUID         `json:"trigger_message_id"`
+	Status           AutomationRunStatus `json:"status"`
+	CurrentNodeID    pgtype.Text         `json:"current_node_id"`
+	Variables        []byte              `json:"variables"`
+	ResumeAt         pgtype.Timestamptz  `json:"resume_at"`
+	StartedAt        time.Time           `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz  `json:"completed_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+func (q *Queries) UpdateAutomationRunState(ctx context.Context, arg UpdateAutomationRunStateParams) (UpdateAutomationRunStateRow, error) {
+	row := q.db.QueryRow(ctx, updateAutomationRunState,
+		arg.Status,
+		arg.CurrentNodeID,
+		arg.Variables,
+		arg.ResumeAt,
+		arg.ID,
+	)
+	var i UpdateAutomationRunStateRow
 	err := row.Scan(
 		&i.ID,
 		&i.AutomationID,
@@ -299,8 +522,58 @@ func (q *Queries) UpdateAutomationRunStatus(ctx context.Context, arg UpdateAutom
 		&i.ConversationID,
 		&i.TriggerMessageID,
 		&i.Status,
+		&i.CurrentNodeID,
+		&i.Variables,
+		&i.ResumeAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateAutomationRunStatus = `-- name: UpdateAutomationRunStatus :one
+UPDATE automation_runs SET status = $1, completed_at = now(), updated_at = now()
+WHERE id = $2
+RETURNING id, automation_id, tenant_id, conversation_id, trigger_message_id, status, current_node_id, variables, resume_at, started_at, completed_at, updated_at
+`
+
+type UpdateAutomationRunStatusParams struct {
+	Status AutomationRunStatus `json:"status"`
+	ID     uuid.UUID           `json:"id"`
+}
+
+type UpdateAutomationRunStatusRow struct {
+	ID               uuid.UUID           `json:"id"`
+	AutomationID     uuid.UUID           `json:"automation_id"`
+	TenantID         uuid.UUID           `json:"tenant_id"`
+	ConversationID   pgtype.UUID         `json:"conversation_id"`
+	TriggerMessageID pgtype.UUID         `json:"trigger_message_id"`
+	Status           AutomationRunStatus `json:"status"`
+	CurrentNodeID    pgtype.Text         `json:"current_node_id"`
+	Variables        []byte              `json:"variables"`
+	ResumeAt         pgtype.Timestamptz  `json:"resume_at"`
+	StartedAt        time.Time           `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz  `json:"completed_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+func (q *Queries) UpdateAutomationRunStatus(ctx context.Context, arg UpdateAutomationRunStatusParams) (UpdateAutomationRunStatusRow, error) {
+	row := q.db.QueryRow(ctx, updateAutomationRunStatus, arg.Status, arg.ID)
+	var i UpdateAutomationRunStatusRow
+	err := row.Scan(
+		&i.ID,
+		&i.AutomationID,
+		&i.TenantID,
+		&i.ConversationID,
+		&i.TriggerMessageID,
+		&i.Status,
+		&i.CurrentNodeID,
+		&i.Variables,
+		&i.ResumeAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -18,6 +19,17 @@ SELECT COUNT(*) FROM conversations WHERE tenant_id = $1
 
 func (q *Queries) CountConversationsByTenant(ctx context.Context, tenantID uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countConversationsByTenant, tenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countEnrichedConversationsByTenant = `-- name: CountEnrichedConversationsByTenant :one
+SELECT COUNT(*) FROM conversations WHERE tenant_id = $1
+`
+
+func (q *Queries) CountEnrichedConversationsByTenant(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countEnrichedConversationsByTenant, tenantID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -299,6 +311,110 @@ func (q *Queries) ListConversationsByTenant(ctx context.Context, arg ListConvers
 	return items, nil
 }
 
+const listEnrichedConversationsByTenant = `-- name: ListEnrichedConversationsByTenant :many
+SELECT
+    c.id, c.tenant_id, c.contact_id, c.status, c.assigned_member_id, c.handled_by,
+    c.previous_conversation_id, c.created_at, c.updated_at,
+    COALESCE(cont.name, '') AS contact_name,
+    COALESCE(ci.channel_type, '') AS channel_type,
+    COALESCE(last_msg.preview, '') AS last_message,
+    COALESCE(last_msg.created_at, '1970-01-01 00:00:00'::timestamptz) AS last_message_at,
+    COALESCE(cr.unread_count, 0) AS unread_count
+FROM conversations c
+LEFT JOIN contacts cont ON cont.id = c.contact_id
+LEFT JOIN LATERAL (
+    SELECT ci.channel_type
+    FROM channel_identities ci
+    WHERE ci.contact_id = c.contact_id
+    ORDER BY ci.created_at ASC
+    LIMIT 1
+) ci ON true
+LEFT JOIN LATERAL (
+    SELECT m.content::text AS preview, m.created_at
+    FROM messages m
+    WHERE m.conversation_id = c.id
+    ORDER BY m.created_at DESC
+    LIMIT 1
+) last_msg ON true
+LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS unread_count
+    FROM messages m
+    WHERE m.conversation_id = c.id
+    AND m.direction = 'inbound'
+    AND m.created_at > COALESCE(
+        (SELECT cr2.last_read_at FROM conversation_reads cr2 WHERE cr2.member_id = $2 AND cr2.conversation_id = c.id),
+        '1970-01-01 00:00:00'::timestamptz
+    )
+) cr ON true
+WHERE c.tenant_id = $1
+ORDER BY c.updated_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListEnrichedConversationsByTenantParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	MemberID uuid.UUID `json:"member_id"`
+	Limit    int32     `json:"limit"`
+	Offset   int32     `json:"offset"`
+}
+
+type ListEnrichedConversationsByTenantRow struct {
+	ID                     uuid.UUID          `json:"id"`
+	TenantID               uuid.UUID          `json:"tenant_id"`
+	ContactID              uuid.UUID          `json:"contact_id"`
+	Status                 ConversationStatus `json:"status"`
+	AssignedMemberID       pgtype.UUID        `json:"assigned_member_id"`
+	HandledBy              HandledBy          `json:"handled_by"`
+	PreviousConversationID pgtype.UUID        `json:"previous_conversation_id"`
+	CreatedAt              time.Time          `json:"created_at"`
+	UpdatedAt              time.Time          `json:"updated_at"`
+	ContactName            string             `json:"contact_name"`
+	ChannelType            string             `json:"channel_type"`
+	LastMessage            string             `json:"last_message"`
+	LastMessageAt          time.Time          `json:"last_message_at"`
+	UnreadCount            int64              `json:"unread_count"`
+}
+
+func (q *Queries) ListEnrichedConversationsByTenant(ctx context.Context, arg ListEnrichedConversationsByTenantParams) ([]ListEnrichedConversationsByTenantRow, error) {
+	rows, err := q.db.Query(ctx, listEnrichedConversationsByTenant,
+		arg.TenantID,
+		arg.MemberID,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEnrichedConversationsByTenantRow{}
+	for rows.Next() {
+		var i ListEnrichedConversationsByTenantRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.ContactID,
+			&i.Status,
+			&i.AssignedMemberID,
+			&i.HandledBy,
+			&i.PreviousConversationID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ContactName,
+			&i.ChannelType,
+			&i.LastMessage,
+			&i.LastMessageAt,
+			&i.UnreadCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMessagesByConversation = `-- name: ListMessagesByConversation :many
 SELECT id, tenant_id, conversation_id, channel_id, direction, status, content_type, content, created_at, updated_at
 FROM messages WHERE conversation_id = $1 AND tenant_id = $2
@@ -413,6 +529,33 @@ func (q *Queries) UpdateMessageStatus(ctx context.Context, arg UpdateMessageStat
 		&i.Status,
 		&i.ContentType,
 		&i.Content,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertConversationRead = `-- name: UpsertConversationRead :one
+INSERT INTO conversation_reads (member_id, conversation_id, last_read_at)
+VALUES ($1, $2, now())
+ON CONFLICT (member_id, conversation_id)
+DO UPDATE SET last_read_at = now(), updated_at = now()
+RETURNING id, member_id, conversation_id, last_read_at, created_at, updated_at
+`
+
+type UpsertConversationReadParams struct {
+	MemberID       uuid.UUID `json:"member_id"`
+	ConversationID uuid.UUID `json:"conversation_id"`
+}
+
+func (q *Queries) UpsertConversationRead(ctx context.Context, arg UpsertConversationReadParams) (ConversationRead, error) {
+	row := q.db.QueryRow(ctx, upsertConversationRead, arg.MemberID, arg.ConversationID)
+	var i ConversationRead
+	err := row.Scan(
+		&i.ID,
+		&i.MemberID,
+		&i.ConversationID,
+		&i.LastReadAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

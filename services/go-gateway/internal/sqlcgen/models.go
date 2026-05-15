@@ -541,6 +541,15 @@ type Conversation struct {
 	UpdatedAt              time.Time          `json:"updated_at"`
 }
 
+type ConversationRead struct {
+	ID             uuid.UUID `json:"id"`
+	MemberID       uuid.UUID `json:"member_id"`
+	ConversationID uuid.UUID `json:"conversation_id"`
+	LastReadAt     time.Time `json:"last_read_at"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
 type CustomField struct {
 	ID        uuid.UUID `json:"id"`
 	TenantID  uuid.UUID `json:"tenant_id"`

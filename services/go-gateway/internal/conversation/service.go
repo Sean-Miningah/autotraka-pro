@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/autotraka/go-gateway/internal/auth"
 	"github.com/autotraka/go-gateway/internal/automation"
 	"github.com/autotraka/go-gateway/internal/channel"
 	"github.com/autotraka/go-gateway/internal/contact"
@@ -62,6 +63,24 @@ type Conversation struct {
 	UpdatedAt              time.Time  `json:"updated_at"`
 	Messages               []Message  `json:"messages,omitempty"`
 	Contact                *contact.Contact `json:"contact,omitempty"`
+}
+
+// EnrichedConversation is a conversation list item with contact and message summary.
+type EnrichedConversation struct {
+	ID                     uuid.UUID  `json:"id"`
+	TenantID               uuid.UUID  `json:"tenant_id"`
+	ContactID              uuid.UUID  `json:"contact_id"`
+	Status                 string     `json:"status"`
+	AssignedMemberID       *uuid.UUID `json:"assigned_member_id,omitempty"`
+	HandledBy              string     `json:"handled_by"`
+	PreviousConversationID *uuid.UUID `json:"previous_conversation_id,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
+	ContactName            string     `json:"contact_name"`
+	ChannelType            string     `json:"channel_type"`
+	LastMessage            string     `json:"last_message"`
+	LastMessageAt          time.Time  `json:"last_message_at"`
+	UnreadCount            int64      `json:"unread_count"`
 }
 
 // Message is the enriched message model.
@@ -473,6 +492,7 @@ func (s *Service) List(ctx context.Context, tenantID uuid.UUID, limit, offset in
 }
 
 // Get returns a single conversation with messages.
+// It also marks the conversation as read for the requesting member.
 func (s *Service) Get(ctx context.Context, tenantID, id uuid.UUID) (*Conversation, error) {
 	conv, err := s.queries.GetConversationByID(ctx, sqlcgen.GetConversationByIDParams{
 		ID:       id,
@@ -483,6 +503,12 @@ func (s *Service) Get(ctx context.Context, tenantID, id uuid.UUID) (*Conversatio
 			return nil, ErrNotFound
 		}
 		return nil, err
+	}
+
+	// Mark as read for the requesting member
+	memberID := auth.GetMemberID(ctx)
+	if memberID != uuid.Nil {
+		_ = s.MarkAsRead(ctx, memberID, id)
 	}
 
 	conversation := s.toConversation(conv)
@@ -509,6 +535,62 @@ func (s *Service) Get(ctx context.Context, tenantID, id uuid.UUID) (*Conversatio
 	}
 
 	return &conversation, nil
+}
+
+// ListEnriched returns conversations with contact name, channel type, last message
+// preview, and unread count for the given member.
+func (s *Service) ListEnriched(ctx context.Context, tenantID, memberID uuid.UUID, limit, offset int32) ([]EnrichedConversation, int64, error) {
+	rows, err := s.queries.ListEnrichedConversationsByTenant(ctx, sqlcgen.ListEnrichedConversationsByTenantParams{
+		TenantID: tenantID,
+		MemberID: memberID,
+		Limit:    limit,
+		Offset:   offset,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	count, err := s.queries.CountEnrichedConversationsByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]EnrichedConversation, 0, len(rows))
+	for _, r := range rows {
+		ec := EnrichedConversation{
+			ID:              r.ID,
+			TenantID:        r.TenantID,
+			ContactID:       r.ContactID,
+			Status:          string(r.Status),
+			HandledBy:       string(r.HandledBy),
+			CreatedAt:       r.CreatedAt,
+			UpdatedAt:       r.UpdatedAt,
+			ContactName:     r.ContactName,
+			ChannelType:     r.ChannelType,
+			LastMessage:     r.LastMessage,
+			LastMessageAt:   r.LastMessageAt,
+			UnreadCount:     r.UnreadCount,
+		}
+		if r.AssignedMemberID.Valid {
+			uid := uuid.UUID(r.AssignedMemberID.Bytes)
+			ec.AssignedMemberID = &uid
+		}
+		if r.PreviousConversationID.Valid {
+			uid := uuid.UUID(r.PreviousConversationID.Bytes)
+			ec.PreviousConversationID = &uid
+		}
+		result = append(result, ec)
+	}
+	return result, count, nil
+}
+
+// MarkAsRead upserts a conversation_reads record for the given member and conversation.
+func (s *Service) MarkAsRead(ctx context.Context, memberID, conversationID uuid.UUID) error {
+	_, err := s.queries.UpsertConversationRead(ctx, sqlcgen.UpsertConversationReadParams{
+		MemberID:       memberID,
+		ConversationID: conversationID,
+	})
+	return err
 }
 
 // UpdateMessageStatus updates a message's delivery status.

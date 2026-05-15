@@ -28,6 +28,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.GetTenantID(r.Context())
+	memberID := auth.GetMemberID(r.Context())
 
 	limit := int32(20)
 	offset := int32(0)
@@ -42,7 +43,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	conversations, count, err := h.service.List(r.Context(), tenantID, limit, offset)
+	conversations, count, err := h.service.ListEnriched(r.Context(), tenantID, memberID, limit, offset)
 	if err != nil {
 		auth.WriteJSON(w, http.StatusInternalServerError, auth.Envelope{Error: "internal error"})
 		return
@@ -52,7 +53,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	statusFilter := r.URL.Query().Get("status")
 	handledByFilter := r.URL.Query().Get("handled_by")
 	if statusFilter != "" || handledByFilter != "" {
-		filtered := make([]Conversation, 0, len(conversations))
+		filtered := make([]EnrichedConversation, 0, len(conversations))
 		for _, c := range conversations {
 			if statusFilter != "" && c.Status != statusFilter {
 				continue

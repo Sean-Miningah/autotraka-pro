@@ -34,11 +34,12 @@ type Channel interface {
 
 // WebhookEvent is the platform-agnostic representation of an inbound event.
 type WebhookEvent struct {
-	EventID   string          `json:"event_id"`
-	From      string          `json:"from"`
-	To        string          `json:"to"`
-	MessageID string          `json:"message_id"`
-	Type      string          `json:"type"` // text, image, audio, document, template, etc.
-	Content   json.RawMessage `json:"content"`
-	Timestamp int64           `json:"timestamp"`
+	EventID     string          `json:"event_id"`
+	From        string          `json:"from"`
+	To          string          `json:"to"`
+	MessageID   string          `json:"message_id"`
+	Type        string          `json:"type"` // text, image, audio, document, template, etc.
+	Content     json.RawMessage `json:"content"`
+	Timestamp   int64           `json:"timestamp"`
+	ChannelType string          `json:"channel_type"`
 }

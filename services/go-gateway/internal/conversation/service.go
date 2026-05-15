@@ -92,8 +92,12 @@ type MessageReceivedPayload struct {
 // finds or creates conversation, stores message.
 func (s *Service) ProcessInboundMessage(ctx context.Context, tenantID, channelID uuid.UUID, evt channel.WebhookEvent) (*Conversation, *Message, error) {
 	// Resolve or create contact
+	channelType := evt.ChannelType
+	if channelType == "" {
+		channelType = "whatsapp"
+	}
 	c, err := s.contactSvc.ResolveOrCreate(ctx, tenantID, contact.ResolveRequest{
-		ChannelType:     "whatsapp",
+		ChannelType:     channelType,
 		ChannelIdentity: evt.From,
 		Name:            "", // name may come from webhook payload but we don't have it in WebhookEvent
 		Phone:           evt.From,

@@ -93,8 +93,9 @@ func main() {
 	contactSvc := contact.NewService(queries)
 	contactHandler := contact.NewHandler(contactSvc)
 
-	// Default WhatsApp channel (temporary — will be replaced by per-tenant DB lookup).
+	// Default channels (temporary — per-tenant DB lookup will replace these).
 	wa := channel.NewWhatsApp(cfg.MetaBaseURL, cfg.WhatsAppAccessToken, cfg.WhatsAppPhoneNumberID, cfg.WhatsAppAppSecret, cfg.WhatsAppVerifyToken)
+	ig := channel.NewInstagram(cfg.MetaBaseURL, cfg.InstagramAccessToken, cfg.InstagramAccountID, cfg.InstagramAppSecret, cfg.InstagramVerifyToken)
 
 	metaTemplateClient := template.NewMetaTemplateAPI(cfg.MetaBaseURL, cfg.WhatsAppAccessToken)
 	templateSvc := template.NewService(queries, metaTemplateClient)
@@ -136,6 +137,7 @@ func main() {
 	wsHandler := websocket.NewHandler(wsHub, []byte(cfg.JWTSecret))
 
 	webhookHandler := webhook.NewHandler(queries, eb, wa, uuid.Nil, uuid.Nil)
+	instagramWebhookHandler := webhook.NewHandler(queries, eb, ig, uuid.Nil, uuid.Nil)
 
 	// Background worker for unprocessed webhook events.
 	worker := webhook.NewWorker(queries, eb, wa)
@@ -165,6 +167,8 @@ func main() {
 	r.Route("/webhook", func(r chi.Router) {
 		r.Get("/whatsapp", webhookHandler.WhatsApp)
 		r.Post("/whatsapp", webhookHandler.WhatsApp)
+		r.Get("/instagram", instagramWebhookHandler.Instagram)
+		r.Post("/instagram", instagramWebhookHandler.Instagram)
 	})
 
 	r.Route("/internal", func(r chi.Router) {

@@ -43,6 +43,18 @@ func (h *Handler) WhatsApp(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Instagram handles GET (verification) and POST (ingestion) for Instagram webhooks.
+func (h *Handler) Instagram(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.handleVerification(w, r)
+	case http.MethodPost:
+		h.handleIngestion(w, r)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 func (h *Handler) handleVerification(w http.ResponseWriter, r *http.Request) {
 	mode := r.URL.Query().Get("hub.mode")
 	verifyToken := r.URL.Query().Get("hub.verify_token")
@@ -93,6 +105,7 @@ func (h *Handler) handleIngestion(w http.ResponseWriter, r *http.Request) {
 	// Publish parsed event to NATS asynchronously.
 	if h.eventbus != nil {
 		ctx = eventbus.WithTenantID(ctx, h.tenantID)
-		_ = h.eventbus.Publish(ctx, "message.whatsapp.inbound", evt)
+		subject := "message." + h.channel.ChannelType() + ".inbound"
+		_ = h.eventbus.Publish(ctx, subject, evt)
 	}
 }

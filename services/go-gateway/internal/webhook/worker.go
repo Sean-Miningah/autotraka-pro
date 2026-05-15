@@ -68,7 +68,8 @@ func (w *Worker) processBatch(ctx context.Context) {
 
 		if w.eventbus != nil {
 			msgCtx := eventbus.WithTenantID(ctx, evt.TenantID)
-			_ = w.eventbus.Publish(msgCtx, "message.whatsapp.inbound", map[string]string{
+			subject := "message." + evt.ChannelType + ".inbound"
+			_ = w.eventbus.Publish(msgCtx, subject, map[string]string{
 				"event_id": evt.EventID,
 				"payload":  string(evt.RawPayload),
 			})

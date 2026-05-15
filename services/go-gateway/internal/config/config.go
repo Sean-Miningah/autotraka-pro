@@ -22,6 +22,12 @@ type Config struct {
 	WhatsAppAppSecret     string `mapstructure:"META_WHATSAPP_APP_SECRET"`
 	WhatsAppAccessToken   string `mapstructure:"META_WHATSAPP_ACCESS_TOKEN"`
 	WhatsAppPhoneNumberID string `mapstructure:"META_WHATSAPP_PHONE_NUMBER_ID"`
+
+	// Instagram channel credentials (temporary — per-channel config in DB will replace these).
+	InstagramVerifyToken   string `mapstructure:"META_INSTAGRAM_VERIFY_TOKEN"`
+	InstagramAppSecret     string `mapstructure:"META_INSTAGRAM_APP_SECRET"`
+	InstagramAccessToken   string `mapstructure:"META_INSTAGRAM_ACCESS_TOKEN"`
+	InstagramAccountID    string `mapstructure:"META_INSTAGRAM_ACCOUNT_ID"`
 }
 
 // Load reads configuration from environment variables and, in development, a .env file.

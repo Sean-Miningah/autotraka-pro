@@ -3,40 +3,24 @@ package channel
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
-
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // WhatsApp implements the Channel interface for the Meta WhatsApp Business API.
 type WhatsApp struct {
-	httpClient      *http.Client
-	baseURL         string
-	accessToken     string
-	phoneNumberID   string
-	appSecret       string
-	verifyToken     string
+	MetaChannel
+	phoneNumberID string
 }
 
 // NewWhatsApp creates a WhatsApp channel from explicit credentials.
 func NewWhatsApp(baseURL, accessToken, phoneNumberID, appSecret, verifyToken string) *WhatsApp {
 	return &WhatsApp{
-		httpClient: &http.Client{
-			Transport: otelhttp.NewTransport(http.DefaultTransport),
-		},
-		baseURL:       baseURL,
-		accessToken:   accessToken,
+		MetaChannel:   NewMetaChannel(baseURL, accessToken, appSecret, verifyToken, "whatsapp"),
 		phoneNumberID: phoneNumberID,
-		appSecret:     appSecret,
-		verifyToken:   verifyToken,
 	}
 }
 
@@ -53,7 +37,7 @@ func (w *WhatsApp) SendTextMessage(ctx context.Context, to, body string) error {
 		"text":              map[string]string{"body": body},
 	}
 
-	url := fmt.Sprintf("%s/v19.0/%s/messages", w.baseURL, w.phoneNumberID)
+	url := w.apiURL(w.phoneNumberID, "messages")
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)
@@ -107,7 +91,7 @@ func (w *WhatsApp) SendTemplateMessage(ctx context.Context, to, templateName, la
 		},
 	}
 
-	url := fmt.Sprintf("%s/v19.0/%s/messages", w.baseURL, w.phoneNumberID)
+	url := w.apiURL(w.phoneNumberID, "messages")
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)
@@ -142,43 +126,6 @@ func (w *WhatsApp) SendMediaMessage(ctx context.Context, to, mediaType, mediaURL
 // MarkRead marks a message as read on WhatsApp.
 func (w *WhatsApp) MarkRead(ctx context.Context, messageID string) error {
 	return errors.New("not implemented")
-}
-
-// VerifyWebhook checks the subscription challenge.
-func (w *WhatsApp) VerifyWebhook(mode, verifyToken, challenge string) (string, error) {
-	if mode != "subscribe" {
-		return "", errors.New("invalid mode")
-	}
-	if verifyToken != w.verifyToken {
-		return "", errors.New("invalid verify token")
-	}
-	return challenge, nil
-}
-
-// VerifySignature validates the HMAC-SHA256 signature on a webhook payload.
-func (w *WhatsApp) VerifySignature(payload []byte, signature string) error {
-	if w.appSecret == "" {
-		return errors.New("app secret not configured")
-	}
-
-	const prefix = "sha256="
-	if !strings.HasPrefix(signature, prefix) {
-		return errors.New("invalid signature format")
-	}
-
-	expectedMAC, err := hex.DecodeString(strings.TrimPrefix(signature, prefix))
-	if err != nil {
-		return fmt.Errorf("decode signature: %w", err)
-	}
-
-	mac := hmac.New(sha256.New, []byte(w.appSecret))
-	mac.Write(payload)
-	computedMAC := mac.Sum(nil)
-
-	if !hmac.Equal(expectedMAC, computedMAC) {
-		return errors.New("signature mismatch")
-	}
-	return nil
 }
 
 // ParseWebhookEvent extracts inbound message events from a Meta webhook payload.
@@ -236,12 +183,13 @@ func (w *WhatsApp) ParseWebhookEvent(payload []byte) (WebhookEvent, error) {
 	ts, _ := strconv.ParseInt(msg.Timestamp, 10, 64)
 
 	evt := WebhookEvent{
-		EventID:   msg.ID,
-		From:      msg.From,
-		To:        change.Metadata.PhoneNumberID,
-		MessageID: msg.ID,
-		Type:      msg.Type,
-		Timestamp: ts,
+		EventID:     msg.ID,
+		From:        msg.From,
+		To:          change.Metadata.PhoneNumberID,
+		MessageID:   msg.ID,
+		Type:        msg.Type,
+		Timestamp:   ts,
+		ChannelType: "whatsapp",
 	}
 
 	switch msg.Type {

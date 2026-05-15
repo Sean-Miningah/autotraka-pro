@@ -12,6 +12,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addTagToContact = `-- name: AddTagToContact :exec
+INSERT INTO contact_tag_links (contact_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING
+`
+
+type AddTagToContactParams struct {
+	ContactID uuid.UUID `json:"contact_id"`
+	TagID     uuid.UUID `json:"tag_id"`
+}
+
+func (q *Queries) AddTagToContact(ctx context.Context, arg AddTagToContactParams) error {
+	_, err := q.db.Exec(ctx, addTagToContact, arg.ContactID, arg.TagID)
+	return err
+}
+
 const countContactsByTenant = `-- name: CountContactsByTenant :one
 SELECT COUNT(*) FROM contacts WHERE tenant_id = $1
 `
@@ -95,6 +109,59 @@ func (q *Queries) CreateContactPhone(ctx context.Context, arg CreateContactPhone
 		&i.ContactID,
 		&i.Phone,
 		&i.Label,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createContactTag = `-- name: CreateContactTag :one
+INSERT INTO contact_tags (tenant_id, name) VALUES ($1, $2) ON CONFLICT (tenant_id, name) DO NOTHING RETURNING id, tenant_id, name, created_at
+`
+
+type CreateContactTagParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Name     string    `json:"name"`
+}
+
+// Tags
+func (q *Queries) CreateContactTag(ctx context.Context, arg CreateContactTagParams) (ContactTag, error) {
+	row := q.db.QueryRow(ctx, createContactTag, arg.TenantID, arg.Name)
+	var i ContactTag
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createCustomField = `-- name: CreateCustomField :one
+INSERT INTO custom_fields (tenant_id, name, field_type, options) VALUES ($1, $2, $3, $4) RETURNING id, tenant_id, name, field_type, options, created_at
+`
+
+type CreateCustomFieldParams struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	Name      string    `json:"name"`
+	FieldType string    `json:"field_type"`
+	Options   []byte    `json:"options"`
+}
+
+// Custom Fields
+func (q *Queries) CreateCustomField(ctx context.Context, arg CreateCustomFieldParams) (CustomField, error) {
+	row := q.db.QueryRow(ctx, createCustomField,
+		arg.TenantID,
+		arg.Name,
+		arg.FieldType,
+		arg.Options,
+	)
+	var i CustomField
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.FieldType,
+		&i.Options,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -211,6 +278,88 @@ func (q *Queries) GetContactByPhone(ctx context.Context, arg GetContactByPhonePa
 	return i, err
 }
 
+const getContactCustomField = `-- name: GetContactCustomField :one
+SELECT contact_id, field_id, value, created_at, updated_at FROM contact_custom_fields WHERE contact_id = $1 AND field_id = $2
+`
+
+type GetContactCustomFieldParams struct {
+	ContactID uuid.UUID `json:"contact_id"`
+	FieldID   uuid.UUID `json:"field_id"`
+}
+
+func (q *Queries) GetContactCustomField(ctx context.Context, arg GetContactCustomFieldParams) (ContactCustomField, error) {
+	row := q.db.QueryRow(ctx, getContactCustomField, arg.ContactID, arg.FieldID)
+	var i ContactCustomField
+	err := row.Scan(
+		&i.ContactID,
+		&i.FieldID,
+		&i.Value,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getContactTagByName = `-- name: GetContactTagByName :one
+SELECT id, tenant_id, name, created_at FROM contact_tags WHERE tenant_id = $1 AND name = $2
+`
+
+type GetContactTagByNameParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Name     string    `json:"name"`
+}
+
+func (q *Queries) GetContactTagByName(ctx context.Context, arg GetContactTagByNameParams) (ContactTag, error) {
+	row := q.db.QueryRow(ctx, getContactTagByName, arg.TenantID, arg.Name)
+	var i ContactTag
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getCustomFieldByName = `-- name: GetCustomFieldByName :one
+SELECT id, tenant_id, name, field_type, options, created_at FROM custom_fields WHERE tenant_id = $1 AND name = $2
+`
+
+type GetCustomFieldByNameParams struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Name     string    `json:"name"`
+}
+
+func (q *Queries) GetCustomFieldByName(ctx context.Context, arg GetCustomFieldByNameParams) (CustomField, error) {
+	row := q.db.QueryRow(ctx, getCustomFieldByName, arg.TenantID, arg.Name)
+	var i CustomField
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.FieldType,
+		&i.Options,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const hasContactTag = `-- name: HasContactTag :one
+SELECT EXISTS(SELECT 1 FROM contact_tag_links WHERE contact_id = $1 AND tag_id = $2)
+`
+
+type HasContactTagParams struct {
+	ContactID uuid.UUID `json:"contact_id"`
+	TagID     uuid.UUID `json:"tag_id"`
+}
+
+func (q *Queries) HasContactTag(ctx context.Context, arg HasContactTagParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasContactTag, arg.ContactID, arg.TagID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listChannelIdentities = `-- name: ListChannelIdentities :many
 SELECT id, contact_id, channel_type, channel_identity, created_at FROM channel_identities WHERE contact_id = $1
 `
@@ -241,6 +390,49 @@ func (q *Queries) ListChannelIdentities(ctx context.Context, contactID uuid.UUID
 	return items, nil
 }
 
+const listContactCustomFields = `-- name: ListContactCustomFields :many
+SELECT f.id, f.tenant_id, f.name, f.field_type, f.options, v.value
+FROM custom_fields f
+JOIN contact_custom_fields v ON f.id = v.field_id
+WHERE v.contact_id = $1
+`
+
+type ListContactCustomFieldsRow struct {
+	ID        uuid.UUID `json:"id"`
+	TenantID  uuid.UUID `json:"tenant_id"`
+	Name      string    `json:"name"`
+	FieldType string    `json:"field_type"`
+	Options   []byte    `json:"options"`
+	Value     string    `json:"value"`
+}
+
+func (q *Queries) ListContactCustomFields(ctx context.Context, contactID uuid.UUID) ([]ListContactCustomFieldsRow, error) {
+	rows, err := q.db.Query(ctx, listContactCustomFields, contactID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListContactCustomFieldsRow{}
+	for rows.Next() {
+		var i ListContactCustomFieldsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Name,
+			&i.FieldType,
+			&i.Options,
+			&i.Value,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listContactPhones = `-- name: ListContactPhones :many
 SELECT id, contact_id, phone, label, created_at FROM contact_phones WHERE contact_id = $1
 `
@@ -259,6 +451,38 @@ func (q *Queries) ListContactPhones(ctx context.Context, contactID uuid.UUID) ([
 			&i.ContactID,
 			&i.Phone,
 			&i.Label,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listContactTags = `-- name: ListContactTags :many
+SELECT t.id, t.tenant_id, t.name, t.created_at
+FROM contact_tags t
+JOIN contact_tag_links l ON t.id = l.tag_id
+WHERE l.contact_id = $1
+`
+
+func (q *Queries) ListContactTags(ctx context.Context, contactID uuid.UUID) ([]ContactTag, error) {
+	rows, err := q.db.Query(ctx, listContactTags, contactID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ContactTag{}
+	for rows.Next() {
+		var i ContactTag
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Name,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -335,6 +559,45 @@ type MoveContactPhonesParams struct {
 func (q *Queries) MoveContactPhones(ctx context.Context, arg MoveContactPhonesParams) error {
 	_, err := q.db.Exec(ctx, moveContactPhones, arg.ContactID, arg.ContactID_2)
 	return err
+}
+
+const removeTagFromContact = `-- name: RemoveTagFromContact :exec
+DELETE FROM contact_tag_links WHERE contact_id = $1 AND tag_id = $2
+`
+
+type RemoveTagFromContactParams struct {
+	ContactID uuid.UUID `json:"contact_id"`
+	TagID     uuid.UUID `json:"tag_id"`
+}
+
+func (q *Queries) RemoveTagFromContact(ctx context.Context, arg RemoveTagFromContactParams) error {
+	_, err := q.db.Exec(ctx, removeTagFromContact, arg.ContactID, arg.TagID)
+	return err
+}
+
+const setContactCustomField = `-- name: SetContactCustomField :one
+INSERT INTO contact_custom_fields (contact_id, field_id, value) VALUES ($1, $2, $3)
+ON CONFLICT (contact_id, field_id) DO UPDATE SET value = $3, updated_at = now()
+RETURNING contact_id, field_id, value, created_at, updated_at
+`
+
+type SetContactCustomFieldParams struct {
+	ContactID uuid.UUID `json:"contact_id"`
+	FieldID   uuid.UUID `json:"field_id"`
+	Value     string    `json:"value"`
+}
+
+func (q *Queries) SetContactCustomField(ctx context.Context, arg SetContactCustomFieldParams) (ContactCustomField, error) {
+	row := q.db.QueryRow(ctx, setContactCustomField, arg.ContactID, arg.FieldID, arg.Value)
+	var i ContactCustomField
+	err := row.Scan(
+		&i.ContactID,
+		&i.FieldID,
+		&i.Value,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const updateContact = `-- name: UpdateContact :one

@@ -8,9 +8,15 @@ build:
 run:
 	go run ./cmd/server
 
+# Find air wherever it's installed (e.g. GOPATH/bin or mise-managed path)
+AIR := $(shell command -v air 2>/dev/null)
+
 # Run the server with live reloading (requires air)
 dev:
-	air
+ifndef AIR
+	$(error "air is not installed. Run: make install-tools")
+endif
+	mise exec -- $(AIR)
 
 # Run tests
 test:

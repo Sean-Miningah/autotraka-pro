@@ -1,16 +1,32 @@
-.PHONY: up down logs test test-go test-python test-integration clean build run dev migrate-up migrate-down migrate-new install-tools
+.PHONY: up down logs infra-up infra-down test test-go test-python test-integration clean build run dev migrate-up migrate-down migrate-new install-tools ci-up ci-down ci-logs
 
-# Start all services
-up:
-	docker-compose up --build -d
+# --- Development Commands ---
 
-# Stop all services
-down:
-	docker-compose down
+# Start infrastructure services (Postgres, Redis, NATS, Mockoon) for local development
+infra-up:
+	docker compose up -d
 
-# View logs
+# Stop infrastructure services
+infra-down:
+	docker compose down
+
+# Start all services for CI (includes go-gateway and python-ai)
+ci-up:
+	docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build -d
+
+# Stop all CI services
+ci-down:
+	docker compose -f docker-compose.yml -f docker-compose.ci.yml down
+
+# View CI logs
+ci-logs:
+	docker compose -f docker-compose.yml -f docker-compose.ci.yml logs -f
+
+# View infrastructure logs
 logs:
-	docker-compose logs -f
+	docker compose logs -f
+
+# --- Application Commands (run locally, infra must be running) ---
 
 # Run all tests
 test: test-go test-python test-integration
@@ -39,7 +55,12 @@ run:
 dev:
 	cd services/go-gateway && air
 
-# Database migrations
+# Run the Python AI service locally
+run-python-ai:
+	cd services/python-ai && uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload
+
+# --- Database Migrations ---
+
 migrate-up:
 	cd services/go-gateway && go run ./cmd/server migrate up
 
@@ -50,10 +71,12 @@ migrate-new:
 	@read -p "Migration name: " name; \
 	cd services/go-gateway && go run ./cmd/server migrate create $$name
 
+# --- Tools & Cleanup ---
+
 # Install dev tools
 install-tools:
 	go install github.com/air-verse/air@latest
 
-# Clean everything (volumes + images)
+# Clean everything (volumes + images + containers)
 clean:
-	docker-compose down -v --rmi local
+	docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v --rmi local

@@ -1,0 +1,48 @@
+services:
+  go-gateway:
+    build:
+      context: ./services/go-gateway
+      dockerfile: Dockerfile
+    container_name: wa-crm-go-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      ENV: "development"
+      DATABASE_URL: "postgres://devuser:devpass@postgres:5432/wacrm?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      NATS_URL: "nats://nats:4222"
+      META_BASE_URL: "http://mockoon:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      mockoon:
+        condition: service_healthy
+
+  python-ai:
+    build:
+      context: ./services/python-ai
+      dockerfile: Dockerfile
+    container_name: wa-crm-python-ai
+    ports:
+      - "8081:8081"
+    environment:
+      PORT: "8081"
+      ENV: "development"
+      DATABASE_URL: "postgresql://devuser:devpass@postgres:5432/wacrm"
+      REDIS_URL: "redis://redis:6379/0"
+      NATS_URL: "nats://nats:4222"
+      CRM_BASE_URL: "http://mockoon:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      mockoon:
+        condition: service_healthy

@@ -1,7 +1,13 @@
-version: "3.9"
+# Base compose file for development.
+# Starts only infrastructure services (Postgres, Redis, NATS, Mockoon).
+# Application services should be run locally for hot-reload development.
+#
+# Usage:
+#   docker compose up -d               # Start infrastructure only
+#   docker compose down                  # Stop infrastructure
+#   docker compose -f docker-compose.ci.yml up --build -d  # CI: full stack
 
 services:
-  # --- Infrastructure ---
   postgres:
     image: ankane/pgvector:latest
     container_name: wa-crm-postgres
@@ -10,7 +16,7 @@ services:
       POSTGRES_PASSWORD: devpass
       POSTGRES_DB: wacrm
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -45,69 +51,19 @@ services:
       timeout: 5s
       retries: 5
 
-  mockserver:
-    image: mockserver/mockserver:5.15.0
-    container_name: wa-crm-mockserver
+  mockoon:
+    image: mockoon/cli:latest
+    container_name: wa-crm-mockoon
     ports:
-      - "1080:1080"
-    environment:
-      MOCKSERVER_PROPERTY_FILE: /config/mockserver.properties
-      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/initializerJson.json
+      - "1080:3000"
     volumes:
-      - ./mockserver:/config:ro
-      - ./mockserver/expectations:/expectations:ro
-
-
-  # --- Application Services ---
-  go-gateway:
-    build:
-      context: ./services/go-gateway
-      dockerfile: Dockerfile
-    container_name: wa-crm-go-gateway
-    ports:
-      - "8080:8080"
-    environment:
-      PORT: "8080"
-      ENV: "development"
-      DATABASE_URL: "postgres://devuser:devpass@postgres:5432/wacrm?sslmode=disable"
-      REDIS_URL: "redis://redis:6379/0"
-      NATS_URL: "nats://nats:4222"
-      META_BASE_URL: "http://mockserver:1080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
-      - mockserver
-    volumes:
-      - ./services/go-gateway:/app:ro
-
-  python-ai:
-    build:
-      context: ./services/python-ai
-      dockerfile: Dockerfile
-    container_name: wa-crm-python-ai
-    ports:
-      - "8081:8081"
-    environment:
-      PORT: "8081"
-      ENV: "development"
-      DATABASE_URL: "postgresql://devuser:devpass@postgres:5432/wacrm"
-      REDIS_URL: "redis://redis:6379/0"
-      NATS_URL: "nats://nats:4222"
-      CRM_BASE_URL: "http://mockserver:1080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
-      - mockserver
-    volumes:
-      - ./services/python-ai:/app:ro
+      - ./mockoon/meta-mock.json:/data:ro
+    command: ["--data", "/data", "--port", "3000"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 3000 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

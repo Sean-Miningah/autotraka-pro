@@ -28,7 +28,10 @@ The web dashboard that agents use to manage conversations, contacts, and templat
 - **MVP scope**: Auth, Conversations (with real-time via WebSocket), Contacts (list/view), Templates (list/select), Analytics overview.
 - **Post-MVP**: Broadcasts, Automations (flow builder), Channel Health, Contact merge.
 - **Design language**: Minimalist Corporate — clean surfaces, subtle 1px borders, soft elevation shadows, 8px rounded corners, Inter typography, WhatsApp-inspired green palette. High-density information display without cognitive overload. Surfaces are crisp and intentional, using subtle depth to distinguish between navigation, list management, and active conversation threads. Functional readability for extended agent use takes priority over decorative elements.
-- **Navigation**: Mobile-first — bottom tab nav (Inbox, Customers, Dashboards, Copilots, Settings) for agents. Desktop — left sidebar nav (Dashboards, Inbox, Customers, Analytics, Copilots, Settings) with 2+1 inbox layout (conversation list + message thread, contact detail as slide-over drawer).
+- **Navigation**: Two navigation models — Desktop uses a tab-based system; Mobile uses bottom tab nav.
+  - **Desktop**: Global top bar (logo, global search, notifications, user menu) → Tab bar (flat underline indicators, page-type level, not per-entity) → Content area with optional page-level sidebar. No global nav sidebar. The tab bar is primary navigation. Tabs are opened via "+" button dropdown listing all page types. Clicking an existing tab switches to it (state preserved). Closing a tab activates the nearest neighbor. Dashboards tab is always pinned and non-closeable. Page-level sidebars: Customers (customer list, search/filter) and Settings (settings categories). Inbox, Dashboards, Analytics, and Copilots are full-width.
+  - **Mobile**: Bottom tab nav (Inbox, Customers, Dashboards, Copilots, Settings) — no tab bar. State not preserved on switch. Standard page navigation.
+  - **Active Call HUD**: WhatsApp voice calls use a floating overlay (not a tab) pinned to screen, showing contact name, duration, channel badge, and controls (mute, hold, transfer, end). Expandable for more detail. Persists across tab switches.
 - **Auth flow**: Email → password → tenant picker (if multiple tenants). SvelteKit server proxies auth endpoints and sets httpOnly cookie for refresh token. Client receives a short-lived access token. Requires adding `GET /api/v1/auth/tenants?email=...` to the go-gateway API.
 - **Message composer**: Single text input with a "Use Template" button. Template picker opens a searchable dropdown; selecting a template renders parameter fields inline. Free text is the default mode.
 - **Conversation status**: Status pill at top of thread (read-only, shows current state) + action buttons near composer for transitions (Resolve, Escalate, Close). Mobile-thumb-reachable.
@@ -86,13 +89,25 @@ The web dashboard that agents use to manage conversations, contacts, and templat
 - **Typography scale**: Headline LG 28px/700, Headline MD 20px/600, Body LG 16px/400, Body MD 14px/400, Label SM 12px/600
 - **Interaction**: Color-shift hover/active states (darker background on hover, no translate effects). Focus: border turns primary green + subtle shadow
 - **Status pills**: Tonal style — light tinted background + dark text of same hue, 4px radius
-- **Sidebar**: Active nav item indicated by 4px vertical green bar on leading edge + primary-container background
+- **Tab bar**: Flat underline indicators. Active tab: primary green bottom border + bolder text. Inactive tabs: muted on-surface-variant text. Tab order follows open order left-to-right; Dashboards always pinned leftmost.
+- **Global top bar**: Logo (links to Dashboards), global search, notifications bell, user avatar/menu. Minimal, functional.
+- **Page-level sidebars**: Used by Customers and Settings pages only. Not global. Each page decides its own layout.
 - **Spacing**: 8px rhythm. 4px/8px for grouping, 16px gutters, 24px margins
 
 ## Conversation
 
 A threaded exchange of messages between a contact and one or more agents on a channel. Has status (open, pending, escalated, resolved, closed) and handled-by (ai, human, hybrid).
 _Avoid_: Thread, ticket, chat.
+
+## Tab
+
+A page-type level navigation unit in the Desk desktop UI. Each tab represents a page section (Inbox, Customers, Analytics, etc.), not a specific entity. Tabs preserve their content state (scroll position, filters, selection) while open. Dashboards is always pinned and non-closeable. Tabs appear in order of opening, left-to-right. Closing a tab activates the nearest neighbor.
+_Avoid_: Page (ambiguous), view, panel.
+
+## Active Call HUD
+
+A floating overlay for in-progress WhatsApp voice calls. Not a tab — a global session that persists across tab switches. Shows contact name, call duration, channel badge, and call controls (mute, hold, transfer, end). Expandable for additional detail.
+_Avoid_: Call modal, call page, call view.
 
 ## Contact
 

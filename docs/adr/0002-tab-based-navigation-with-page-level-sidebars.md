@@ -1,0 +1,5 @@
+# Tab-based navigation with page-level sidebars
+
+Desktop navigation uses a Chrome-style tab bar at page-type level (one tab per section, not per entity) instead of a global sidebar. Tabs preserve state across switches. Each page decides its own sidebar layout — Customers and Settings have page-level sidebars; Inbox, Dashboards, Analytics, and Copilots are full-width. Dashboards is a pinned, non-closeable tab. Mobile retains a bottom tab nav without state preservation.
+
+This replaces the global sidebar because tabs give agents "navigate back and forth" context switching that a sidebar can't provide. Page-level sidebars avoid the redundancy of double navigation (global sidebar + tab bar). WhatsApp voice calls use a floating HUD overlay rather than a tab because calls are session-level events that must persist across tab switches.

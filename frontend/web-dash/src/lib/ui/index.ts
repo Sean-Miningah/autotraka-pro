@@ -10,3 +10,7 @@ export { default as Drawer } from './Drawer.svelte';
 export { default as Modal } from './Modal.svelte';
 export { default as Avatar } from './Avatar.svelte';
 export { default as ThemeProvider } from './ThemeProvider.svelte';
+export { default as GlobalTopBar } from './GlobalTopBar.svelte';
+export { default as DesktopTabBar } from './DesktopTabBar.svelte';
+export { default as TabContent } from './TabContent.svelte';
+export { default as ActiveCallHud } from './ActiveCallHud.svelte';

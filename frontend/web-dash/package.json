@@ -58,7 +58,7 @@
 		"vitest-browser-svelte": "^2.1.0"
 	},
 	"dependencies": {
-		"@fontsource/space-grotesk": "^5.2.10",
+		"@fontsource/inter": "^5.2.8",
 		"@sveltejs/adapter-node": "^5.5.4"
 	}
 }

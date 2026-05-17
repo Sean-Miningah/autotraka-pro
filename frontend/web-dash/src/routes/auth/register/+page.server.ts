@@ -5,7 +5,7 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ cookies }) => {
 	const refreshToken = cookies.get('refresh_token');
 	if (refreshToken) {
-		throw redirect(302, '/inbox');
+		throw redirect(302, '/dashboards');
 	}
 	return {};
 };

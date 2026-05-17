@@ -13,21 +13,23 @@
 
 	const mobileTabs = [
 		{ id: 'inbox', label: 'Inbox', href: '/inbox' },
-		{ id: 'contacts', label: 'Contacts', href: '/contacts' },
-		{ id: 'mystats', label: 'My Stats', href: '/analytics' },
-		{ id: 'profile', label: 'Profile', href: '/settings' }
+		{ id: 'customers', label: 'Customers', href: '/customers' },
+		{ id: 'dashboards', label: 'Dashboards', href: '/dashboards' },
+		{ id: 'copilots', label: 'Copilots', href: '/copilots' },
+		{ id: 'settings', label: 'Settings', href: '/settings' }
 	];
 
 	const desktopNavItems = [
+		{ id: 'dashboards', label: 'Dashboards', href: '/dashboards' },
 		{ id: 'inbox', label: 'Inbox', href: '/inbox' },
-		{ id: 'contacts', label: 'Contacts', href: '/contacts' },
+		{ id: 'customers', label: 'Customers', href: '/customers' },
 		{ id: 'analytics', label: 'Analytics', href: '/analytics' },
-		{ id: 'templates', label: 'Templates', href: '/templates' },
+		{ id: 'copilots', label: 'Copilots', href: '/copilots' },
 		{ id: 'settings', label: 'Settings', href: '/settings' }
 	];
 
 	function isActive(href: string): boolean {
-		if (href === '/inbox') return currentPath === '/' || currentPath.startsWith('/inbox');
+		if (href === '/dashboards') return currentPath === '/' || currentPath.startsWith('/dashboards');
 		return currentPath.startsWith(href);
 	}
 
@@ -45,8 +47,7 @@
 </script>
 
 <div class="min-h-screen bg-surface">
-	<!-- Desktop sidebar (hidden on mobile) -->
-	<aside class="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-outline-variant lg:bg-surface">
+	<aside class="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-outline-variant lg:bg-surface-container">
 		<div class="flex h-16 items-center border-b border-outline-variant px-6">
 			<h1 class="font-heading text-xl font-bold text-on-surface">
 				<span class="text-primary">Auto</span>traka
@@ -56,9 +57,9 @@
 			{#each desktopNavItems as item (item.id)}
 				<a
 					href={item.href}
-					class="flex items-center gap-3 border px-3 py-2.5 font-heading text-sm font-semibold transition-all {isActive(item.href)
-						? 'bg-primary/10 text-on-primary-container border-l-2 border-primary'
-						: 'border-transparent text-on-surface/60 hover:bg-surface-container-low hover:text-on-surface'}"
+					class="flex items-center gap-3 rounded-[var(--radius-default)] px-3 py-2.5 font-heading text-sm font-semibold transition-colors {isActive(item.href)
+						? 'bg-primary-container text-on-primary-container border-l-[4px] border-primary'
+						: 'text-on-surface-variant hover:bg-surface-container-high'}"
 				>
 					{item.label}
 				</a>
@@ -66,20 +67,18 @@
 		</nav>
 	</aside>
 
-	<!-- Main content area (with sidebar offset on desktop) -->
 	<main class="lg:pl-64">
 		{@render children()}
 	</main>
 
-	<!-- Mobile bottom tab bar (hidden on desktop) -->
-	<nav class="fixed inset-x-0 bottom-0 z-30 border-t border-outline-variant bg-surface lg:hidden">
+	<nav class="fixed inset-x-0 bottom-0 z-30 border-t border-outline-variant bg-surface-container lg:hidden">
 		<div class="flex items-center justify-around">
 			{#each mobileTabs as tab (tab.id)}
 				<a
 					href={tab.href}
-					class="flex flex-col items-center gap-1 px-3 py-2 font-heading text-xs font-semibold {isActive(tab.href)
-						? 'text-on-surface'
-						: 'text-on-surface/50'}"
+					class="flex flex-col items-center gap-1 px-3 py-2 font-heading text-xs font-semibold transition-colors {isActive(tab.href)
+						? 'text-primary'
+						: 'text-on-surface-variant'}"
 				>
 					{tab.label}
 				</a>

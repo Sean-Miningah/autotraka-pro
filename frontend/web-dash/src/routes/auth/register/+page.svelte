@@ -48,20 +48,20 @@
 		<h1 class="mb-6 text-center font-heading text-2xl font-bold text-on-surface">Create your workspace</h1>
 
 		{#if error}
-			<div class="mb-4 border border-error bg-error/10 p-3 text-sm text-error">{error}</div>
+			<div class="mb-4 rounded-[var(--radius-default)] bg-error/10 p-3 text-sm text-on-error-container">{error}</div>
 		{/if}
 
 		<form method="POST" onsubmit={handleSubmit}>
 			<div class="mb-4">
-				<label for="tenant_name" class="mb-1 block font-heading text-sm font-semibold text-on-surface">Workspace name</label>
+				<label for="tenant_name" class="mb-1 block font-heading text-xs font-semibold tracking-wide text-on-surface">Workspace name</label>
 				<Input type="text" bind:value={tenantName} name="tenant_name" placeholder="Acme Corp" required />
 			</div>
 			<div class="mb-4">
-				<label for="email" class="mb-1 block font-heading text-sm font-semibold text-on-surface">Email</label>
+				<label for="email" class="mb-1 block font-heading text-xs font-semibold tracking-wide text-on-surface">Email</label>
 				<Input type="email" bind:value={email} name="email" placeholder="admin@acme.com" required />
 			</div>
 			<div class="mb-6">
-				<label for="password" class="mb-1 block font-heading text-sm font-semibold text-on-surface">Password</label>
+				<label for="password" class="mb-1 block font-heading text-xs font-semibold tracking-wide text-on-surface">Password</label>
 				<Input type="password" bind:value={password} name="password" placeholder="••••••••" required />
 			</div>
 			<Button type="submit" variant="primary" size="lg" class="w-full" disabled={loading}>

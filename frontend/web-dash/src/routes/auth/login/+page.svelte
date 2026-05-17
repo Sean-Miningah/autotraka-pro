@@ -20,7 +20,7 @@
 		<h1 class="mb-6 text-center font-heading text-2xl font-bold text-on-surface">Sign in to Autotraka</h1>
 
 		{#if error || form?.error}
-			<div class="mb-4 border border-error bg-error/10 p-3 text-sm text-error">{error || form?.error}</div>
+			<div class="mb-4 rounded-[var(--radius-default)] bg-error/10 p-3 text-sm text-on-error-container">{error || form?.error}</div>
 		{/if}
 
 		<form
@@ -57,11 +57,11 @@
 			}}
 		>
 			<div class="mb-4" class:hidden={showTenantPicker}>
-				<label for="email" class="mb-1 block font-heading text-sm font-semibold text-on-surface">Email</label>
+				<label for="email" class="mb-1 block font-heading text-xs font-semibold tracking-wide text-on-surface">Email</label>
 				<Input type="email" bind:value={email} name="email" placeholder="you@company.com" required />
 			</div>
 			<div class="mb-6" class:hidden={showTenantPicker}>
-				<label for="password" class="mb-1 block font-heading text-sm font-semibold text-on-surface">Password</label>
+				<label for="password" class="mb-1 block font-heading text-xs font-semibold tracking-wide text-on-surface">Password</label>
 				<Input type="password" bind:value={password} name="password" placeholder="••••••••" required />
 			</div>
 

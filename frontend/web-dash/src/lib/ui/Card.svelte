@@ -9,6 +9,6 @@
 	let { class: className = '', children }: Props = $props();
 </script>
 
-<div class="border-2 border-text bg-surface p-4 shadow-[4px_4px_0px] shadow-text dark:border-text-dark dark:bg-surface-dark dark:shadow-text-dark {className}">
+<div class="bg-surface-container-lowest border border-outline-variant rounded-[var(--radius-default)] p-4 shadow-[var(--shadow-elevation-1)] {className}">
 	{@render children()}
 </div>

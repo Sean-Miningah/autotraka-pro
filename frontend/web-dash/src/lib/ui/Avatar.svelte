@@ -2,18 +2,30 @@
 	interface Props {
 		src?: string;
 		alt?: string;
-		name?: string;
+		fallback?: string;
+		size?: 'sm' | 'md' | 'lg';
 		class?: string;
 	}
 
-	let { src = '', alt = '', name = '', class: className = '' }: Props = $props();
-	const initials = $derived(name ? name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) : '?');
+	let { src = '', alt = '', fallback = '', size = 'md', class: className = '' }: Props = $props();
+
+	const sizeClasses: Record<string, string> = {
+		sm: 'w-8 h-8 text-xs',
+		md: 'w-10 h-10 text-sm',
+		lg: 'w-12 h-12 text-base'
+	};
+
+	const initials = $derived.by(() => {
+		if (!fallback && !alt) return '?';
+		const name = fallback || alt;
+		return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+	});
 </script>
 
 {#if src}
-	<img {src} {alt} class="h-10 w-10 rounded-full border-2 border-text object-cover {className}" />
+	<img {src} {alt} class="ring-1 ring-outline-variant rounded-[var(--radius-full)] object-cover {sizeClasses[size]} {className}" />
 {:else}
-	<div class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-text bg-surface font-heading font-bold text-text dark:border-text-dark dark:bg-surface-dark dark:text-text-dark {className}">
+	<div class="ring-1 ring-outline-variant rounded-[var(--radius-full)] bg-primary/10 text-on-primary-container flex items-center justify-center font-heading font-semibold {sizeClasses[size]} {className}">
 		{initials}
 	</div>
 {/if}

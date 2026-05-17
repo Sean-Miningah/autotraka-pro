@@ -43,25 +43,25 @@
 	}
 </script>
 
-<div class="flex min-h-screen items-center justify-center bg-base dark:bg-base-dark p-4">
+<div class="flex min-h-screen items-center justify-center bg-surface p-4">
 	<Card class="w-full max-w-md">
-		<h1 class="mb-6 text-center font-heading text-2xl font-bold text-text dark:text-text-dark">Create your workspace</h1>
+		<h1 class="mb-6 text-center font-heading text-2xl font-bold text-on-surface">Create your workspace</h1>
 
 		{#if error}
-			<div class="mb-4 border-2 border-danger bg-danger/10 p-3 text-sm text-danger">{error}</div>
+			<div class="mb-4 border border-error bg-error/10 p-3 text-sm text-error">{error}</div>
 		{/if}
 
 		<form method="POST" onsubmit={handleSubmit}>
 			<div class="mb-4">
-				<label for="tenant_name" class="mb-1 block font-heading text-sm font-semibold text-text dark:text-text-dark">Workspace name</label>
+				<label for="tenant_name" class="mb-1 block font-heading text-sm font-semibold text-on-surface">Workspace name</label>
 				<Input type="text" bind:value={tenantName} name="tenant_name" placeholder="Acme Corp" required />
 			</div>
 			<div class="mb-4">
-				<label for="email" class="mb-1 block font-heading text-sm font-semibold text-text dark:text-text-dark">Email</label>
+				<label for="email" class="mb-1 block font-heading text-sm font-semibold text-on-surface">Email</label>
 				<Input type="email" bind:value={email} name="email" placeholder="admin@acme.com" required />
 			</div>
 			<div class="mb-6">
-				<label for="password" class="mb-1 block font-heading text-sm font-semibold text-text dark:text-text-dark">Password</label>
+				<label for="password" class="mb-1 block font-heading text-sm font-semibold text-on-surface">Password</label>
 				<Input type="password" bind:value={password} name="password" placeholder="••••••••" required />
 			</div>
 			<Button type="submit" variant="primary" size="lg" class="w-full" disabled={loading}>
@@ -69,7 +69,7 @@
 			</Button>
 		</form>
 
-		<p class="mt-4 text-center text-sm text-text/60 dark:text-text-dark/60">
+		<p class="mt-4 text-center text-sm text-on-surface/50">
 			Already have an account?
 			<a href="/auth/login" class="text-secondary hover:underline">Sign in</a>
 		</p>

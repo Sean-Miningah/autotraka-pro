@@ -65,22 +65,17 @@
 
 <div class="flex h-screen flex-col bg-surface">
 	<!-- Header with status tabs -->
-	<div class="border-b border-outline-variant bg-surface">
+	<div class="border-b border-outline-variant bg-surface-container">
 		<div class="flex items-center justify-between px-4 py-3">
 			<h1 class="font-heading text-xl font-bold text-on-surface">Inbox</h1>
-			<button
-				class="border border-outline-variant px-2 py-1 font-heading text-xs font-semibold text-on-surface hover:bg-primary/10"
-				onclick={() => showFilterDrawer = true}
-			>
-				Filter
-			</button>
+			<Button variant="outline" size="sm" onclick={() => showFilterDrawer = true}>Filter</Button>
 		</div>
 		<div class="flex gap-1 overflow-x-auto px-4 pb-2">
 			{#each statusTabs as tab (tab.label)}
 				<button
-					class="border px-3 py-1.5 font-heading text-xs font-semibold transition-all {statusFilter === tab.value
-						? 'bg-primary/10 text-on-primary-container border border-primary'
-						: 'border-transparent text-on-surface/50 hover:border-outline-variant'}"
+					class="px-3 py-1.5 font-heading text-xs font-semibold border-b-2 transition-colors {statusFilter === tab.value
+						? 'border-primary text-on-primary-container'
+						: 'border-transparent text-on-surface-variant hover:border-outline-variant'}"
 					onclick={() => { statusFilter = tab.value; fetchConversations(); }}
 				>
 					{tab.label}
@@ -93,7 +88,7 @@
 	<div class="flex-1 overflow-y-auto pb-20 lg:pb-4">
 		{#if loading && convList.length === 0}
 			<div class="flex items-center justify-center p-8">
-				<p class="font-heading text-on-surface/50">Loading conversations...</p>
+				<p class="font-heading text-on-surface-variant">Loading conversations...</p>
 			</div>
 		{:else if error}
 			<div class="flex items-center justify-center p-8">
@@ -101,13 +96,13 @@
 			</div>
 		{:else if convList.length === 0}
 			<div class="flex items-center justify-center p-8">
-				<p class="font-heading text-on-surface/50">No conversations found.</p>
+				<p class="font-heading text-on-surface-variant">No conversations found.</p>
 			</div>
 		{:else}
 			<div class="divide-y divide-outline-variant/30">
 				{#each convList as conv (conv.id)}
 					<button
-						class="flex w-full items-start gap-3 border-b border-outline-variant/30 px-4 py-3 text-left transition-all hover:bg-surface-container-low"
+						class="flex w-full items-start gap-3 border-b border-outline-variant/30 px-4 py-3 text-left transition-colors hover:bg-surface-container-high border-l-[4px] border-l-primary"
 						onclick={() => navigateToConversation(conv.id)}
 					>
 						<div class="min-w-0 flex-1">
@@ -122,15 +117,15 @@
 									<StatusPill status={(conv.status || 'open') as 'open' | 'pending' | 'escalated' | 'resolved' | 'closed'} handledBy={conv.handled_by as 'ai' | 'human' | 'hybrid'} />
 								</div>
 							</div>
-							<p class="mt-0.5 truncate text-sm text-on-surface/60">
+							<p class="mt-0.5 truncate text-sm text-on-surface-variant">
 								{parseLastMessage(conv.last_message)}
 							</p>
 							<div class="mt-1 flex items-center justify-between">
-								<span class="text-xs text-on-surface/40">
+								<span class="text-xs text-on-surface-variant">
 									{formatRelativeTime(conv.updated_at)}
 								</span>
 								{#if conv.unread_count > 0}
-									<Badge variant="primary">{conv.unread_count}</Badge>
+									<Badge variant="tonal">{conv.unread_count}</Badge>
 								{/if}
 							</div>
 						</div>
@@ -159,9 +154,9 @@
 			<div class="flex flex-wrap gap-2">
 				{#each handledByOptions as option (option.label)}
 					<button
-						class="border px-3 py-1.5 font-heading text-xs font-semibold transition-all {handledByFilter === option.value
-							? 'bg-primary/10 text-on-primary-container border border-primary'
-							: 'border-outline-variant/50 text-on-surface/50 hover:border-outline-variant'}"
+						class="rounded-[var(--radius-default)] px-3 py-1.5 font-heading text-xs font-semibold transition-colors {handledByFilter === option.value
+							? 'bg-primary/10 text-on-primary-container'
+							: 'text-on-surface-variant hover:bg-surface-container-high'}"
 						onclick={() => { handledByFilter = option.value; showFilterDrawer = false; fetchConversations(); }}
 					>
 						{option.label}

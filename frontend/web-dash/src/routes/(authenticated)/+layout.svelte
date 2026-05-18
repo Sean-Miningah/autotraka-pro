@@ -13,6 +13,7 @@
 	import AnalyticsSkeleton from '$lib/ui/AnalyticsSkeleton.svelte';
 	import CopilotsSkeleton from '$lib/ui/CopilotsSkeleton.svelte';
 	import SettingsSkeleton from '$lib/ui/SettingsSkeleton.svelte';
+	import ActiveCallHud from '$lib/ui/ActiveCallHud.svelte';
 
 	interface LayoutData {
 		accessToken: string | null;
@@ -88,7 +89,52 @@
 		const label = tabs.getActiveTabLabel();
 		document.title = `${label} — Autotraka`;
 	});
+
+	// --- Active Call HUD (dev-only fake call toggle) ---
+	interface FakeCall {
+		contactName: string;
+		phoneNumber?: string;
+		channelId: 'whatsapp' | 'facebook' | 'instagram';
+		startedAt: Date;
+		isMuted: boolean;
+		isOnHold: boolean;
+	}
+
+	let fakeCall = $state<FakeCall | null>(null);
+
+	function toggleFakeCall() {
+		if (fakeCall) {
+			fakeCall = null;
+		} else {
+			fakeCall = {
+				contactName: 'Test Caller',
+				phoneNumber: '+1 555 0199',
+				channelId: 'whatsapp',
+				startedAt: new Date(),
+				isMuted: false,
+				isOnHold: false
+			};
+		}
+	}
+
+	function toggleMute() {
+		if (fakeCall) fakeCall = { ...fakeCall, isMuted: !fakeCall.isMuted };
+	}
+
+	function toggleHold() {
+		if (fakeCall) fakeCall = { ...fakeCall, isOnHold: !fakeCall.isOnHold };
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		// Dev-only: Ctrl/Cmd + Shift + C toggles fake call
+		if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+			e.preventDefault();
+			toggleFakeCall();
+		}
+	}
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="min-h-screen bg-surface">
 	<!-- Desktop: shell layout with component-based tab rendering -->
@@ -134,4 +180,12 @@
 			</div>
 		</nav>
 	</div>
+
+	<!-- Active Call HUD: persists across tab switches -->
+	<ActiveCallHud
+		call={fakeCall}
+		onMute={toggleMute}
+		onHold={toggleHold}
+		onEndCall={toggleFakeCall}
+	/>
 </div>

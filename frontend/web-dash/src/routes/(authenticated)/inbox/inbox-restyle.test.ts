@@ -7,6 +7,31 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const page = readFileSync(resolve(__dirname, './+page.svelte'), 'utf-8');
 
 describe('inbox page restyle', () => {
+	describe('2-pane layout', () => {
+		it('uses flex row on desktop', () => {
+			expect(page).toContain('lg:flex-row');
+		});
+
+		it('left pane has fixed width ~320px with right border', () => {
+			expect(page).toContain('lg:w-80');
+			expect(page).toContain('lg:border-r');
+			expect(page).toContain('border-outline-variant');
+		});
+
+		it('right pane fills remaining width on desktop', () => {
+			expect(page).toContain('flex-1');
+			expect(page).toContain('lg:flex');
+		});
+
+		it('renders InboxEmptyState in the right pane', () => {
+			expect(page).toContain('InboxEmptyState');
+		});
+
+		it('hides right pane on mobile', () => {
+			expect(page).toContain('hidden');
+			expect(page).toContain('lg:flex');
+		});
+	});
 	describe('header', () => {
 		it('uses bg-surface-container with 1px outline-variant border', () => {
 			const header = page.match(/<div[^>]*border-b[^>]*>/s)?.[0] ?? '';
@@ -18,12 +43,8 @@ describe('inbox page restyle', () => {
 	});
 
 	describe('status filter tabs', () => {
-		it('active tab uses underline indicator with text-primary, no shadow/translate', () => {
-			expect(page).toContain('border-b-2');
-			expect(page).toContain('border-primary');
-			expect(page).not.toContain('shadow-[2px');
-			expect(page).not.toContain('translate-x');
-			expect(page).not.toContain('translate-y');
+		it('uses the TabBar component for status tabs', () => {
+			expect(page).toContain('TabBar');
 		});
 
 		it('inactive tab uses text-on-surface-variant', () => {
@@ -45,10 +66,10 @@ describe('inbox page restyle', () => {
 			expect(page).toContain('text-on-surface-variant');
 		});
 
-		it('has active conversation indicator with 4px green bar', () => {
-			expect(page).toContain('border-l-[4px]');
-			expect(page).toContain('border-primary');
-		});
+	it('has active conversation indicator with 4px green bar', () => {
+		expect(page).toContain('border-l-[4px]');
+		expect(page).toContain('border-l-primary');
+	});
 	});
 
 	describe('filter button', () => {

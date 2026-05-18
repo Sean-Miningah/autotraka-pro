@@ -7,7 +7,12 @@
 	import GlobalTopBar from '$lib/ui/GlobalTopBar.svelte';
 	import DesktopTabBar from '$lib/ui/DesktopTabBar.svelte';
 	import TabContent from '$lib/ui/TabContent.svelte';
-	import Skeleton from '$lib/ui/Skeleton.svelte';
+	import DashboardsSkeleton from '$lib/ui/DashboardsSkeleton.svelte';
+	import InboxSkeleton from '$lib/ui/InboxSkeleton.svelte';
+	import CustomersSkeleton from '$lib/ui/CustomersSkeleton.svelte';
+	import AnalyticsSkeleton from '$lib/ui/AnalyticsSkeleton.svelte';
+	import CopilotsSkeleton from '$lib/ui/CopilotsSkeleton.svelte';
+	import SettingsSkeleton from '$lib/ui/SettingsSkeleton.svelte';
 
 	interface LayoutData {
 		accessToken: string | null;
@@ -38,6 +43,15 @@
 		analytics: () => import('./analytics/+page.svelte'),
 		copilots: () => import('./copilots/+page.svelte'),
 		settings: () => import('./settings/+page.svelte')
+	};
+
+	const PAGE_SKELETONS: Record<string, unknown> = {
+		dashboards: DashboardsSkeleton,
+		inbox: InboxSkeleton,
+		customers: CustomersSkeleton,
+		analytics: AnalyticsSkeleton,
+		copilots: CopilotsSkeleton,
+		settings: SettingsSkeleton
 	};
 
 	$effect(() => {
@@ -86,7 +100,7 @@
 			{#each tabList as tab (tab.id)}
 				<TabContent pageId={tab.id}>
 					{#await PAGE_COMPONENTS[tab.id]()}
-						<Skeleton height="h-full" />
+						<svelte:component this={PAGE_SKELETONS[tab.id]} />
 					{:then module}
 						<svelte:component this={(module as { default: unknown }).default} />
 					{:catch}

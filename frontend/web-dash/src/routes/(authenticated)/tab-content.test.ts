@@ -34,10 +34,11 @@ describe('component-based tab rendering in layout', () => {
 		expect(layout).toContain('svelte:component');
 	});
 
-	it('shows a skeleton/fallback state while component loads', () => {
+	it('shows a page-specific skeleton while component loads', () => {
 		expect(layout).toContain('#await');
-		expect(layout).toContain('Skeleton');
 		expect(layout).toContain(':catch');
+		expect(layout).toContain('PAGE_SKELETONS');
+		expect(layout).toContain('svelte:component');
 	});
 
 	it('desktop uses component-based rendering, mobile uses standard children', () => {

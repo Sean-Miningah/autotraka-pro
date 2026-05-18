@@ -27,7 +27,7 @@ const PINNED_TAB: Tab = {
 
 export const pageTypes = PAGE_TYPES;
 
-function createTabStore() {
+export function createTabStore() {
 	const store = writable<Tab[]>([PINNED_TAB]);
 	const activeId = writable<string>(PINNED_TAB.id);
 
@@ -75,7 +75,7 @@ function createTabStore() {
 			store.set(remaining);
 
 			if ($activeId === pageId) {
-				const neighborIndex = index < remaining.length ? index : remaining.length - 1;
+				const neighborIndex = index - 1 >= 0 ? index - 1 : remaining.length - 1;
 				const neighbor = remaining[neighborIndex];
 				if (neighbor) {
 					activeId.set(neighbor.id);

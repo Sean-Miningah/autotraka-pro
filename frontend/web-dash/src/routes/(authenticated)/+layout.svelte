@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { ws } from '$lib/stores/websocket';
 	import { auth } from '$lib/stores/auth';
 	import { tabs } from '$lib/stores/tabs';
@@ -37,6 +38,23 @@
 		return () => {
 			ws.disconnect();
 		};
+	});
+
+	// URL → tab: when the URL changes, sync tab state from the URL
+	$effect(() => {
+		const path = currentPath;
+		tabs.syncFromUrl(path);
+	});
+
+	// Tab → URL: when the active tab changes programatically, navigate to its href
+	// Guard: only navigate if the URL does not already "belong" to this tab
+	// (preserves sub-routes like /inbox/abc123)
+	$effect(() => {
+		const activeId = tabs.activeTabId;
+		const href = tabs.redirectToActiveTab();
+		if (!currentPath.startsWith(href)) {
+			goto(href);
+		}
 	});
 </script>
 

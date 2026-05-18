@@ -31,6 +31,20 @@ export function createTabStore() {
 	const store = writable<Tab[]>([PINNED_TAB]);
 	const activeId = writable<string>(PINNED_TAB.id);
 
+	function doOpenTab(pageId: string) {
+		const $tabs = get(store);
+		const existing = $tabs.find((t) => t.id === pageId);
+		if (existing) {
+			activeId.set(pageId);
+			return;
+		}
+		const pageType = PAGE_TYPES.find((p) => p.id === pageId);
+		if (!pageType) return;
+		const newTab: Tab = { ...pageType, pinned: false };
+		store.update((t) => [...t, newTab]);
+		activeId.set(pageId);
+	}
+
 	return {
 		subscribe: store.subscribe,
 		subscribeActiveId: activeId.subscribe,
@@ -44,17 +58,7 @@ export function createTabStore() {
 		},
 
 		openTab(pageId: string) {
-			const $tabs = get(store);
-			const existing = $tabs.find((t) => t.id === pageId);
-			if (existing) {
-				activeId.set(pageId);
-				return;
-			}
-			const pageType = PAGE_TYPES.find((p) => p.id === pageId);
-			if (!pageType) return;
-			const newTab: Tab = { ...pageType, pinned: false };
-			store.update((t) => [...t, newTab]);
-			activeId.set(pageId);
+			doOpenTab(pageId);
 		},
 
 		switchTab(pageId: string) {
@@ -90,6 +94,19 @@ export function createTabStore() {
 		getAvailablePages(): PageType[] {
 			const $tabs = get(store);
 			return PAGE_TYPES;
+		},
+
+		syncFromUrl(pathname: string) {
+			const parts = pathname.split('/').filter(Boolean);
+			const rootPath = parts[0] ? '/' + parts[0] : '/';
+			const matched = PAGE_TYPES.find((p) => rootPath === p.href);
+			doOpenTab(matched ? matched.id : 'dashboards');
+		},
+
+		redirectToActiveTab(): string {
+			const id = get(activeId);
+			const pageType = PAGE_TYPES.find((p) => p.id === id);
+			return pageType ? pageType.href : '/dashboards';
 		}
 	};
 }

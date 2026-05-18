@@ -159,4 +159,62 @@ describe('tab store', () => {
 		]);
 		expect(tabs[0].pinned).toBe(true);
 	});
+
+	it('syncFromUrl opens the corresponding tab and makes it active', () => {
+		const store = createTabStore();
+		store.syncFromUrl('/customers');
+
+		const tabs = get(store);
+		expect(tabs.length).toBe(2);
+		expect(tabs[1].id).toBe('customers');
+		expect(tabs[1].pinned).toBe(false);
+		expect(store.activeTabId).toBe('customers');
+	});
+
+	it('syncFromUrl maps sub-routes to the parent tab', () => {
+		const store = createTabStore();
+		store.syncFromUrl('/inbox/abc123');
+
+		const tabs = get(store);
+		expect(tabs.length).toBe(2);
+		expect(tabs[1].id).toBe('inbox');
+		expect(tabs[1].href).toBe('/inbox');
+		expect(store.activeTabId).toBe('inbox');
+	});
+
+	it('syncFromUrl defaults to dashboards for unknown paths', () => {
+		const store = createTabStore();
+		store.syncFromUrl('/unknown');
+
+		const tabs = get(store);
+		expect(tabs.length).toBe(1); // only dashboards
+		expect(tabs[0].id).toBe('dashboards');
+		expect(store.activeTabId).toBe('dashboards');
+	});
+
+	it('syncFromUrl switches to already-open tab without duplicating', () => {
+		const store = createTabStore();
+		store.openTab('inbox');
+		store.openTab('customers');
+		// Inbox and customers are already open; active is customers
+
+		store.syncFromUrl('/inbox');
+
+		const tabs = get(store);
+		expect(tabs.length).toBe(3); // dashboards, inbox, customers (no duplicate)
+		expect(store.activeTabId).toBe('inbox');
+	});
+
+	it('redirectToActiveTab returns the href of the active tab', () => {
+		const store = createTabStore();
+		store.openTab('inbox');
+		// activeTabId = 'inbox'
+		expect(store.redirectToActiveTab()).toBe('/inbox');
+	});
+
+	it('redirectToActiveTab returns /dashboards when no matching tab is found', () => {
+		const store = createTabStore();
+		// dashboards is the only tab active by default
+		expect(store.redirectToActiveTab()).toBe('/dashboards');
+	});
 });

@@ -56,6 +56,12 @@
 			goto(href);
 		}
 	});
+
+	// Sync browser tab title with active tab label
+	$effect(() => {
+		const label = tabs.getActiveTabLabel();
+		document.title = `${label} — Autotraka`;
+	});
 </script>
 
 <div class="min-h-screen bg-surface">

@@ -107,6 +107,12 @@ export function createTabStore() {
 			const id = get(activeId);
 			const pageType = PAGE_TYPES.find((p) => p.id === id);
 			return pageType ? pageType.href : '/dashboards';
+		},
+
+		getActiveTabLabel(): string {
+			const id = get(activeId);
+			const pageType = PAGE_TYPES.find((p) => p.id === id);
+			return pageType ? pageType.label : 'Dashboards';
 		}
 	};
 }

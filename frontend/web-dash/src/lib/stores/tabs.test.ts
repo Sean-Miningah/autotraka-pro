@@ -217,4 +217,15 @@ describe('tab store', () => {
 		// dashboards is the only tab active by default
 		expect(store.redirectToActiveTab()).toBe('/dashboards');
 	});
+
+	it('getActiveTabLabel returns the label of the active tab', () => {
+		const store = createTabStore();
+		store.openTab('customers');
+		expect(store.getActiveTabLabel()).toBe('Customers');
+	});
+
+	it('getActiveTabLabel returns "Dashboards" when no matching tab is found', () => {
+		const store = createTabStore();
+		expect(store.getActiveTabLabel()).toBe('Dashboards');
+	});
 });

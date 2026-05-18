@@ -21,3 +21,5 @@ export { default as AnalyticsSkeleton } from './AnalyticsSkeleton.svelte';
 export { default as CopilotsSkeleton } from './CopilotsSkeleton.svelte';
 export { default as SettingsSkeleton } from './SettingsSkeleton.svelte';
 export { default as InboxEmptyState } from './InboxEmptyState.svelte';
+export { default as CustomersEmptyState } from './CustomersEmptyState.svelte';
+export { default as CustomersSidebar } from './CustomersSidebar.svelte';

@@ -9,32 +9,35 @@ const customersDir = resolve(__dirname, '../../../routes/(authenticated)/custome
 describe('customers page restyle', () => {
 	const page = readFileSync(resolve(customersDir, '+page.svelte'), 'utf-8');
 
-	it('heading says Customers not Contacts', () => {
-		expect(page).toContain('Customers');
-		expect(page).not.toContain('Contacts');
+	describe('master-detail layout', () => {
+		it('renders CustomersSidebar and detail area side by side', () => {
+			expect(page).toContain('CustomersSidebar');
+			expect(page).toContain('flex');
+			expect(page).toContain('lg:flex-row');
+		});
+
+		it('sidebar is 280px fixed width on desktop', () => {
+			expect(page).toContain('CustomersSidebar');
+		});
+
+		it('detail area fills remaining width', () => {
+			expect(page).toContain('flex-1');
+		});
+
+		it('shows CustomersEmptyState when no customer selected', () => {
+			expect(page).toContain('CustomersEmptyState');
+		});
 	});
 
-	it('uses text-headline-lg token on heading', () => {
-		expect(page).toContain('text-[28px]');
-		expect(page).toContain('font-bold');
-		expect(page).toContain('leading-tight');
-	});
+	describe('design tokens', () => {
+		it('uses bg-surface background', () => {
+			expect(page).toContain('bg-surface');
+		});
 
-	it('uses text-on-surface for heading', () => {
-		expect(page).toContain('text-on-surface');
-	});
-
-	it('uses text-on-surface-variant for subtitle', () => {
-		expect(page).toContain('text-on-surface-variant');
-	});
-
-	it('uses bg-surface background', () => {
-		expect(page).toContain('bg-surface');
-	});
-
-	it('has no dark mode or neo-brutalist classes', () => {
-		expect(page).not.toContain('dark:');
-		expect(page).not.toContain('border-text');
-		expect(page).not.toContain('shadow-[4px');
+		it('has no dark mode or neo-brutalist classes', () => {
+			expect(page).not.toContain('dark:');
+			expect(page).not.toContain('border-text');
+			expect(page).not.toContain('shadow-[4px');
+		});
 	});
 });

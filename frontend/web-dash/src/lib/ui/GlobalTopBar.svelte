@@ -8,6 +8,8 @@
 
 	let { class: className = '' }: Props = $props();
 
+	let userInitial = $derived($auth.user?.email?.[0]?.toUpperCase() ?? 'U');
+
 	function goDashboards() {
 		tabs.openTab('dashboards');
 	}
@@ -37,7 +39,7 @@
 			class="flex h-8 w-8 items-center justify-center rounded-[var(--radius-full)] bg-primary text-on-primary font-heading text-xs font-semibold hover:opacity-90 transition-opacity"
 			aria-label="User menu"
 		>
-			U
+			{userInitial}
 		</button>
 	</div>
 </header>

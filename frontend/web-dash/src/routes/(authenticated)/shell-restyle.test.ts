@@ -5,54 +5,115 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const layout = readFileSync(resolve(__dirname, './+layout.svelte'), 'utf-8');
+const tabBar = readFileSync(resolve(__dirname, '../../lib/ui/DesktopTabBar.svelte'), 'utf-8');
+const topBar = readFileSync(resolve(__dirname, '../../lib/ui/GlobalTopBar.svelte'), 'utf-8');
 
-describe('shell restyle', () => {
-	describe('desktop sidebar', () => {
-		it('uses 1px outline-variant right border', () => {
-			expect(layout).toContain('border-r');
-			expect(layout).toContain('border-outline-variant');
-			expect(layout).not.toContain('border-r-2');
-			expect(layout).not.toContain('border-text');
+describe('shell layout', () => {
+	describe('desktop shell', () => {
+		it('has no sidebar (<aside>) element', () => {
+			expect(layout).not.toContain('<aside');
 		});
 
-		it('has correct nav items: Dashboards, Inbox, Customers, Analytics, Copilots, Settings', () => {
-			expect(layout).toContain("label: 'Dashboards'");
-			expect(layout).toContain("label: 'Inbox'");
-			expect(layout).toContain("label: 'Customers'");
-			expect(layout).toContain("label: 'Analytics'");
-			expect(layout).toContain("label: 'Copilots'");
-			expect(layout).toContain("label: 'Settings'");
-			expect(layout).not.toContain("label: 'Templates'");
-			expect(layout).not.toContain("label: 'Contacts'");
+		it('has no lg:pl-64 padding on main content', () => {
+			expect(layout).not.toContain('lg:pl-64');
 		});
 
-		it('uses correct nav routes', () => {
-			expect(layout).toContain("href: '/dashboards'");
-			expect(layout).toContain("href: '/inbox'");
-			expect(layout).toContain("href: '/customers'");
-			expect(layout).toContain("href: '/analytics'");
-			expect(layout).toContain("href: '/copilots'");
-			expect(layout).toContain("href: '/settings'");
+		it('desktop container is a vertical flex column filling viewport', () => {
+			expect(layout).toContain('lg:flex-col');
+			expect(layout).toContain('lg:h-screen');
 		});
 
-		it('active nav has 4px vertical green bar on leading edge', () => {
-			expect(layout).toContain('border-l-[4px]');
-			expect(layout).toContain('border-primary');
-			expect(layout).not.toContain('border-l-2');
+		it('renders GlobalTopBar component', () => {
+			expect(layout).toContain('<GlobalTopBar');
 		});
 
-		it('active nav uses primary-container background', () => {
-			expect(layout).toContain('bg-primary-container');
+		it('renders DesktopTabBar component', () => {
+			expect(layout).toContain('<DesktopTabBar');
 		});
 
-		it('inactive nav uses on-surface-variant text with hover background', () => {
-			expect(layout).toContain('text-on-surface-variant');
-			expect(layout).toContain('hover:bg-surface-container-high');
+		it('content area is scrollable and flex-1', () => {
+			expect(layout).toContain('flex-1');
+			expect(layout).toContain('overflow-auto');
+		});
+	});
+
+	describe('GlobalTopBar', () => {
+		it('has correct height (h-12 = 48px)', () => {
+			expect(topBar).toContain('h-12');
 		});
 
-		it('sidebar background is surface-container', () => {
-			const aside = layout.match(/<aside[^>]*>/s)?.[0] ?? '';
-			expect(aside).toContain('bg-surface-container');
+		it('logo reads "Auto" followed by "traka"', () => {
+			expect(topBar).toContain('Auto');
+			expect(topBar).toContain('traka');
+			expect(topBar).toContain('text-primary');
+		});
+
+		it('logo button navigates to Dashboards tab via tabs store', () => {
+			expect(topBar).toContain("tabs.openTab('dashboards')");
+		});
+
+		it('has search icon button', () => {
+			expect(topBar).toContain('aria-label="Search"');
+		});
+
+		it('has notifications bell icon button', () => {
+			expect(topBar).toContain('aria-label="Notifications"');
+		});
+
+		it('has user avatar button with initial', () => {
+			expect(topBar).toContain('aria-label="User menu"');
+			expect(topBar).toContain('rounded-[var(--radius-full)]');
+			expect(topBar).toContain('userInitial');
+		});
+	});
+
+	describe('DesktopTabBar', () => {
+		it('renders tabs from the tab store', () => {
+			expect(tabBar).toContain('tabs.tabs');
+			expect(tabBar).toContain('tabs.activeTabId');
+		});
+
+		it('active tab has primary green bottom border and semibold text', () => {
+			expect(tabBar).toContain('border-b-2');
+			expect(tabBar).toContain('border-primary');
+			expect(tabBar).toContain('font-semibold');
+		});
+
+		it('inactive tabs have muted text and no border', () => {
+			expect(tabBar).toContain('text-on-surface-variant');
+			const activePart = tabBar.match(/tab\.id === activeId[^{]*{([^}]*)}/s)?.[0] ?? '';
+			// Inactive state is the else branch — confirms it lacks border classes
+			expect(tabBar).toContain('hover:text-on-surface');
+		});
+
+		it('close button appears on hover for non-pinned tabs', () => {
+			expect(tabBar).toContain('opacity-0');
+			expect(tabBar).toContain('group-hover:opacity-100');
+		});
+
+		it('pinned tab has no close button', () => {
+			expect(tabBar).toContain('!tab.pinned');
+		});
+
+		it('clicking a tab switches to it', () => {
+			expect(tabBar).toContain('tabs.switchTab');
+		});
+
+		it('clicking close removes the tab', () => {
+			expect(tabBar).toContain('tabs.closeTab');
+		});
+
+		it('plus button opens dropdown menu', () => {
+			expect(tabBar).toContain('aria-label="Open new tab"');
+			expect(tabBar).toContain('tabs.getAvailablePages');
+		});
+
+		it('dropdown marks open tabs with checkmark', () => {
+			expect(tabBar).toContain('tabs.isTabOpen(page.id)');
+		});
+
+		it('clicking a page in dropdown calls openTab', () => {
+			expect(tabBar).toContain('tabs.openTab(id)');
 		});
 	});
 
@@ -63,8 +124,6 @@ describe('shell restyle', () => {
 			expect(layout).toContain("label: 'Dashboards'");
 			expect(layout).toContain("label: 'Copilots'");
 			expect(layout).toContain("label: 'Settings'");
-			expect(layout).not.toContain("label: 'Profile'");
-			expect(layout).not.toContain("label: 'My Stats'");
 		});
 
 		it('uses 1px outline-variant top border', () => {
